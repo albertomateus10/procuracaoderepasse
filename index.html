@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <title>Gerador de Procuração</title>
+    <!-- Bibliotecas para leitura de PDF e geração do documento -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body {
+            background-color: #f5f5f5;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 760px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 30px 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            text-align: center;
+            margin-top: 0;
+            color: #333333;
+        }
+        .instructions {
+            margin-bottom: 20px;
+            color: #555555;
+            line-height: 1.4;
+        }
+        .file-input {
+            margin-bottom: 20px;
+        }
+        input[type="file"] {
+            display: block;
+            padding: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button {
+            display: inline-block;
+            padding: 10px 24px;
+            font-size: 14px;
+            color: #ffffff;
+            background-color: #007BFF;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        /* Estilos do template da procuração */
+        #procuraTemplate {
+            width: 90%;
+            margin: 40px auto;
+            font-size: 12pt;
+            line-height: 1.4;
+            color: #000000;
+        }
+        #procuraTemplate .title {
+            text-align: center;
+            font-weight: bold;
+            font-size: 18pt;
+        }
+        #procuraTemplate .justify {
+            text-align: justify;
+        }
+        #procuraTemplate .center {
+            text-align: center;
+        }
+        #cityDate {
+            text-align: center;
+            /* mantém em uma única linha */
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Gerador de Procuração</h2>
+        <p class="instructions">Selecione o arquivo PDF do contrato e clique em <strong>Gerar Procuração</strong>. O programa extrai automaticamente os dados do cliente e do veículo e gera a procuração em PDF de acordo com o modelo.</p>
+        <div class="file-input">
+            <input type="file" id="fileInput" accept="application/pdf" />
+        </div>
+        <button id="generateBtn" disabled>Gerar Procuração</button>
+    </div>
+
+    <!-- Template oculto para geração do PDF -->
+    <div id="procuraTemplate" style="display:none;">
+        <div class="title">PROCURAÇÃO</div>
+        <br /><br /><br />
+        <p id="para1" class="justify"></p>
+        <br /><br /><br />
+        <p id="para2" class="justify"></p>
+        <br /><br /><br />
+        <p id="vehicleInfo"></p>
+        <br /><br />
+        <p id="cityDate"></p>
+        <br /><br /><br /><br />
+        <p class="center">______________________________________________</p>
+        <p class="center"><b>(Assinatura reconhecida por autenticidade)</b></p>
+    </div>
+
+    <script>
+    // Função robusta para extrair campos dos contratos em PDF
+    function extractFields(text) {
+        const lines = text.split(/\n+/).map(l => l.trim()).filter(l => l);
+        let name = '', address = '', bairro = '', cep = '', city = '', state = '', cnpj = '', model = '', plate = '', ano = '', chassis = '', renavam = '', color = '';
+        // Captura CPF/CNPJ diretamente do rótulo "CPF/CNPJ:" se existir
+        const cpfCnpjMatch = text.match(/CPF\/CNPJ\s*:\s*([\d\.\/\-]+)/i);
+        if (cpfCnpjMatch) {
+            cnpj = cpfCnpjMatch[1];
+        } else {
+            // Fallback: última ocorrência de CNPJ no documento
+            const cnpjPattern = /\d{2}\.\d{3}\.\d{3}\/\d{4}\-\d{2}/g;
+            const cnpjList = text.match(cnpjPattern);
+            if (cnpjList && cnpjList.length) {
+                cnpj = cnpjList[cnpjList.length - 1];
+            }
+        }
+        // Nome: captura até vírgula ou rótulos e remove sufixos
+        const nameMatch = text.match(/Cliente\s*:\s*([^\n,]+)/i);
+        if (nameMatch) {
+            let nm = nameMatch[1];
+            nm = nm.split(/CPF|CNPJ|Cadastro/i)[0];
+            name = nm.trim();
+        }
+        // Endereço: tenta capturar a partir do rótulo "Endereço:" se existir
+        const enderecoMatch = text.match(/Endere[cç]o\s*:\s*([^\n,]+)/i);
+        if (enderecoMatch) {
+            address = enderecoMatch[1].trim();
+        } else {
+            // Fallback: procura linha após o cliente que contém dígitos ou palavras típicas de logradouro
+            if (lines.length) {
+                const nameLineIndex = lines.findIndex(l => /Cliente\s*:/i.test(l));
+                if (nameLineIndex !== -1) {
+                    for (let j = nameLineIndex + 1; j < Math.min(nameLineIndex + 6, lines.length); j++) {
+                        const l = lines[j];
+                        if (/Bairro\s*:/i.test(l) || /Proposta|Forma|Fones/i.test(l)) break;
+                        // Se possui números ou palavragens de logradouro assume como endereço
+                        if (/[0-9]/.test(l) || /(RUA|AV|AV\.|ALAMEDA|TRAV|ROD|ESTR)/i.test(l)) {
+                            let addr = l.split(/I\.E\.|CNPJ:|CPF:|Bairro:/i)[0].trim();
+                            if (addr) {
+                                address = addr;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Bairro e CEP
+        // Procura bairro e CEP a partir da posição do cliente, para capturar os dados do comprador (e não da empresa)
+        if (lines.length) {
+            const clientIdx = lines.findIndex(l => /Cliente\s*:/i.test(l));
+            if (clientIdx !== -1) {
+                // Busca o primeiro 'Bairro:' nas próximas linhas após o cliente
+                for (let j = clientIdx; j < Math.min(clientIdx + 10, lines.length); j++) {
+                    const l = lines[j];
+                    const bm = l.match(/Bairro\s*:\s*([^\n,]+)/i);
+                    if (bm) {
+                        bairro = bm[1].trim();
+                        break;
+                    }
+                }
+                // Busca o primeiro 'CEP:' nas próximas linhas após o cliente
+                for (let j = clientIdx; j < Math.min(clientIdx + 10, lines.length); j++) {
+                    const l = lines[j];
+                    const cm = l.match(/CEP\s*:\s*([\d\-]+)/i);
+                    if (cm) {
+                        cep = cm[1];
+                        break;
+                    }
+                }
+            }
+        }
+        // Se não encontrou bairro/CEP nas proximidades do cliente, faz uma busca global
+        if (!bairro) {
+            const bairroMatches = [...text.matchAll(/Bairro\s*:\s*([^\n,]+)/gi)];
+            if (bairroMatches.length) {
+                bairro = bairroMatches[bairroMatches.length - 1][1].trim();
+            }
+        }
+        if (!cep) {
+            const cepMatches = [...text.matchAll(/CEP\s*:\s*([\d\-]+)/gi)];
+            if (cepMatches.length) {
+                cep = cepMatches[cepMatches.length - 1][1];
+            }
+        }
+        // Cidade e estado
+        if (bairro) {
+            // tenta extrair cidade e estado a partir da linha que contém o bairro
+            const bIndex = lines.findIndex(l => /Bairro\s*:/i.test(l));
+            if (bIndex !== -1) {
+                // procura nas linhas seguintes por uma linha que contenha um estado (sigla)
+                for (let k = bIndex; k < Math.min(bIndex + 4, lines.length); k++) {
+                    const l = lines[k];
+                    // procura por padrão "Cidade - nome do estado - UF"
+                    const csMatch = l.match(/([^\-]+)\s*-\s*[^\-]+\s*-\s*([A-Z]{2})/i);
+                    if (csMatch) {
+                        city = csMatch[1].trim();
+                        state = csMatch[2].trim();
+                        break;
+                    }
+                }
+            }
+        }
+        // Se ainda não conseguiu cidade/estado, busca por padrão "Cidade - estado - UF" somente após a ocorrência de "Cliente"
+        if (!city || !state) {
+            let subtext = text;
+            const clientPos = text.toLowerCase().indexOf('cliente');
+            if (clientPos !== -1) {
+                subtext = text.substring(clientPos);
+            }
+            const cityStateMatch = subtext.match(/([^\-\n]+)\s*-\s*[^\-\n]+\s*-\s*([A-Z]{2})/i);
+            if (cityStateMatch) {
+                city = cityStateMatch[1].trim();
+                state = cityStateMatch[2].trim();
+            }
+        }
+        // Modelo do veículo
+        const modelMatch = text.match(/Ve[ií]culo\s*:\s*([^\n]+?)(?=\s+Placa|\s+Chassi|\n)/i);
+        if (modelMatch) {
+            model = modelMatch[1].trim();
+        }
+        // Placa
+        // Primeiro tenta capturar a placa usando o rótulo "Placa:" exatamente na seção de dados do veículo.  
+        // Placa - lógica robusta para capturar placas que podem aparecer antes ou depois do rótulo "Placa:"
+        let plateCandidate = '';
+        const placaIndex = text.search(/Placa/i);
+        if (placaIndex >= 0) {
+            // Verifica até 25 caracteres antes do índice de "Placa" para encontrar a placa antes do rótulo
+            const start = Math.max(0, placaIndex - 25);
+            const beforeSegment = text.substring(start, placaIndex);
+            const beforeMatch = beforeSegment.match(/([A-Z]{3}[A-Z0-9\-]{4,5})\s*$/i);
+            if (beforeMatch) {
+                let raw = beforeMatch[1].replace(/\s+/g, '').toUpperCase();
+                if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) {
+                    plateCandidate = raw.slice(0, 3) + '-' + raw.slice(3);
+                } else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(raw)) {
+                    plateCandidate = raw;
+                } else {
+                    plateCandidate = raw;
+                }
+            }
+            // Se não encontrou antes, tenta capturar logo após o rótulo "Placa:" no segmento seguinte
+            if (!plateCandidate) {
+                const afterSegment = text.substring(placaIndex);
+                const afterMatch = afterSegment.match(/Placa\s*:\s*([A-Z0-9\-]{3,8})/i);
+                if (afterMatch) {
+                    let raw = afterMatch[1].trim().replace(/\s+/g, '').toUpperCase();
+                    if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) {
+                        plateCandidate = raw.slice(0, 3) + '-' + raw.slice(3);
+                    } else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(raw)) {
+                        plateCandidate = raw;
+                    } else {
+                        plateCandidate = raw;
+                    }
+                }
+            }
+        }
+        // Se ainda não encontrou pelo método posicional, recorre à primeira ocorrência global de "Placa:" sem contexto
+        if (!plateCandidate) {
+            const placaLabelRegex = /Placa\s*:\s*([A-Z0-9\-]+)/i;
+            const placaMatch = text.match(placaLabelRegex);
+            if (placaMatch) {
+                let raw = placaMatch[1].trim().replace(/\s+/g, '').toUpperCase();
+                if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) {
+                    plateCandidate = raw.slice(0, 3) + '-' + raw.slice(3);
+                } else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(raw)) {
+                    plateCandidate = raw;
+                } else {
+                    plateCandidate = raw;
+                }
+            }
+        }
+        // Fallback global: procura padrão Mercosul no texto inteiro se nada foi encontrado
+        if (!plateCandidate) {
+            const platePatternGlobal = /([A-Z]{3}\-?[0-9][A-Z][0-9]{2})/gi;
+            const plateList = text.match(platePatternGlobal);
+            if (plateList && plateList.length) {
+                let candidate = plateList[0];
+                let normalized = candidate.replace(/\s|-/g, '').toUpperCase();
+                if (/^[A-Z]{3}[0-9]{4}$/.test(normalized)) {
+                    plateCandidate = normalized.slice(0, 3) + '-' + normalized.slice(3);
+                } else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(normalized)) {
+                    plateCandidate = normalized;
+                } else {
+                    plateCandidate = normalized;
+                }
+            }
+        }
+        plate = plateCandidate;
+        // Ano/Modelo
+        // Procura "Ano/Modelo" e permite que os dígitos estejam após caracteres não numéricos (incluindo quebras de linha)
+        let anoMatch = text.match(/Ano\s*\/\s*Modelo[^0-9]*([0-9]{2}\/[0-9]{2}|[0-9]{4}\/[0-9]{4})/i);
+        if (!anoMatch) {
+            // Fallback: captura o primeiro padrão de dois dígitos (1-2) separados por barra (evita datas como 07/10)
+            const genericYear = text.match(/\b([1-2][0-9]\/[1-2][0-9])\b/);
+            if (genericYear) {
+                anoMatch = [null, genericYear[1]];
+            }
+        }
+        if (anoMatch) {
+            ano = anoMatch[1];
+            // Converte formato 2 dígitos/2 dígitos para 4 dígitos/4 dígitos
+            if (/^[0-9]{2}\/[0-9]{2}$/.test(ano)) {
+                const parts = ano.split('/');
+                ano = '20' + parts[0] + '/20' + parts[1];
+            }
+        }
+        // Chassi
+        const chassiMatch = text.match(/Chassi\s*:?\s*([A-Za-z0-9]+)/i);
+        if (chassiMatch) {
+            chassis = chassiMatch[1];
+        }
+        // Renavam
+        const renMatch = text.match(/Renavam\s*:?\s*(\d+)/i);
+        if (renMatch) {
+            renavam = renMatch[1];
+        }
+        // Cor
+        const colorMatch = text.match(/Cor\s*:\s*([^/\n]+)/i);
+        if (colorMatch) {
+            color = colorMatch[1].split('/')[0].trim();
+        }
+        return { name, cnpj, address, bairro, cep, city, state, model, plate, ano, chassis, renavam, color };
+    }
+
+    // Processa arquivo PDF selecionado
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function() {
+            const typedarray = new Uint8Array(this.result);
+            pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
+                pdf.getPage(1).then(function(page) {
+                    page.getTextContent().then(function(content) {
+                        const strings = content.items.map(item => item.str).join('\n');
+                        const data = extractFields(strings);
+                        // Monta os parágrafos com os dados extraídos
+                        document.getElementById('para1').innerHTML =
+                            `Por este instrumento particular de procuração,  <b>${data.name || ''}</b>, CPF/CNPJ:  <b>${data.cnpj || ''}</b>, ENDEREÇO: <b>${data.address || ''}</b>, BAIRRO: <b>${data.bairro || ''}</b>, CEP: <b>${data.cep || ''}</b>, CIDADE: <b>${data.city || ''}</b>, ESTADO: <b>${data.state || ''}</b>.`;
+                        document.getElementById('para2').innerHTML =
+                            'Dados pelos quais responsabilizo-me civil e criminalmente, nomeio e constituo meu bastante procurador: RAMIRO ILHA, portador do CPF: 375.722.450-72 e RG: 9021949971, domiciliado na Rua Dr. Voltaire Pires, Nº 430, na cidade de Porto Alegre/RS, para os fins específicos de assinar a GRT, Guia de Responsabilidade Técnica, e também o "DE ACORDO" na compra do veículo descrito abaixo:';
+                        document.getElementById('vehicleInfo').innerHTML =
+                            `MODELO DO VEÍCULO: <b>${data.model || ''}</b><br>` +
+                            `PLACA: <b>${data.plate || ''}</b><br>` +
+                            `ANO/MODELO: <b>${data.ano || ''}</b><br>` +
+                            `CHASSI: <b>${data.chassis || ''}</b><br>` +
+                            `RENAVAM: <b>${data.renavam || ''}</b><br>` +
+                            `COR: <b>${data.color || ''}</b>`;
+                        document.getElementById('cityDate').innerHTML =
+                            // Linha de cidade/data ajustada para não ultrapassar a largura da página.  
+                            'CIDADE: ________________, ESTADO: ___, ____ de _______________ de ____.';
+                        // Define nome do arquivo de saída
+                        const sanitizedPlate = data.plate ? data.plate.replace(/[^A-Za-z0-9]/g, '') : 'PLACADESCONHECIDA';
+                        const sanitizedName = data.name ? data.name.replace(/\s+/g, '_') : 'CLIENTE';
+                        document.getElementById('generateBtn').dataset.filename = `PROCURACAO_${sanitizedPlate}_${sanitizedName}.pdf`;
+                        document.getElementById('generateBtn').disabled = false;
+                    });
+                });
+            });
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    // Gera o PDF a partir do template
+    document.getElementById('generateBtn').addEventListener('click', function() {
+        const element = document.getElementById('procuraTemplate');
+        element.style.display = 'block';
+        const filename = this.dataset.filename || 'procuracao.pdf';
+        const opt = {
+            margin: 20,
+            filename: filename,
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
+        };
+        html2pdf().set(opt).from(element).save().then(() => {
+            element.style.display = 'none';
+        });
+    });
+    </script>
+</body>
+</html>
