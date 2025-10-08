@@ -3,74 +3,118 @@
 <head>
     <meta charset="utf-8">
     <title>Gerador de Procuração</title>
-    <!-- Bibliotecas para leitura de PDF e geração do documento -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         body {
-            background-color: #f5f5f5;
-            font-family: Arial, sans-serif;
+            background-color: #f4f6f9;
+            font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;
-            padding: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
         .container {
-            max-width: 760px;
-            margin: 40px auto;
+            max-width: 800px;
             background: #ffffff;
-            padding: 30px 40px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 40px;
         }
         h2 {
             text-align: center;
-            margin-top: 0;
-            color: #333333;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 28px;
         }
         .instructions {
+            color: #6b7280;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .drop-zone {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background-color: #f9fafb;
+            transition: all 0.3s ease;
             margin-bottom: 20px;
-            color: #555555;
-            line-height: 1.4;
+            cursor: pointer;
+        }
+        .drop-zone.dragover {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+            transform: scale(1.02);
+        }
+        .drop-zone p {
+            margin: 0;
+            color: #4b5563;
+            font-size: 16px;
+        }
+        .drop-zone input[type="file"] {
+            display: none;
         }
         .file-input {
             margin-bottom: 20px;
         }
         input[type="file"] {
-            display: block;
-            padding: 8px;
+            padding: 10px;
             width: 100%;
             box-sizing: border-box;
         }
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
         button {
-            display: inline-block;
-            padding: 10px 24px;
-            font-size: 14px;
+            padding: 12px 30px;
+            font-size: 16px;
             color: #ffffff;
-            background-color: #007BFF;
+            background-color: #3b82f6;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
-            transition: background-color 0.2s ease;
+            transition: background-color 0.3s ease, transform 0.2s ease;
         }
         button:hover:not(:disabled) {
-            background-color: #0056b3;
+            background-color: #2563eb;
+            transform: translateY(-2px);
         }
         button:disabled {
-            background-color: #cccccc;
+            background-color: #d1d5db;
             cursor: not-allowed;
         }
-        /* Estilos do template da procuração */
+        #previewSection {
+            margin-top: 40px;
+            padding: 20px;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            display: none;
+        }
+        #previewSection h3 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 20px;
+        }
         #procuraTemplate {
             width: 90%;
-            margin: 40px auto;
+            margin: 20px auto;
             font-size: 12pt;
-            line-height: 1.4;
+            line-height: 1.6;
             color: #000000;
         }
         #procuraTemplate .title {
             text-align: center;
             font-weight: bold;
             font-size: 18pt;
+            margin-bottom: 20px;
         }
         #procuraTemplate .justify {
             text-align: justify;
@@ -80,74 +124,82 @@
         }
         #cityDate {
             text-align: center;
-            /* mantém em uma única linha */
             white-space: nowrap;
+        }
+        .status-message {
+            text-align: center;
+            color: #10b981;
+            font-weight: bold;
+            margin-top: 10px;
+            display: none;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>Gerador de Procuração</h2>
-        <p class="instructions">Selecione o arquivo PDF do contrato e clique em <strong>Gerar Procuração</strong>. O programa extrai automaticamente os dados do cliente e do veículo e gera a procuração em PDF de acordo com o modelo.</p>
-        <div class="file-input">
+        <h2>Gerador de Procuração de Repasse</h2>
+        <p class="instructions">Arraste e solte o PDF do contrato na área abaixo ou clique para selecionar. Após o upload, os dados serão extraídos e a procuração será exibida para revisão antes de gerar o PDF.</p>
+        
+        <div class="drop-zone" id="dropZone">
+            <p>Arraste e solte o arquivo PDF aqui ou clique para selecionar</p>
             <input type="file" id="fileInput" accept="application/pdf" />
         </div>
-        <button id="generateBtn" disabled>Gerar Procuração</button>
+        <p class="status-message" id="statusMessage"></p>
+        <div class="button-group">
+            <button id="generateBtn" disabled>Gerar PDF</button>
+            <button id="clearBtn" style="background-color: #6b7280;" disabled>Limpar</button>
+        </div>
     </div>
 
-    <!-- Template oculto para geração do PDF -->
-    <div id="procuraTemplate" style="display:none;">
-        <div class="title">PROCURAÇÃO</div>
-        <br /><br /><br />
-        <p id="para1" class="justify"></p>
-        <br /><br /><br />
-        <p id="para2" class="justify"></p>
-        <br /><br /><br />
-        <p id="vehicleInfo"></p>
-        <br /><br />
-        <p id="cityDate"></p>
-        <br /><br /><br /><br />
-        <p class="center">______________________________________________</p>
-        <p class="center"><b>(Assinatura reconhecida por autenticidade)</b></p>
+    <div id="previewSection">
+        <h3>Pré-visualização da Procuração</h3>
+        <div id="procuraTemplate">
+            <div class="title">PROCURAÇÃO</div>
+            <br /><br />
+            <p id="para1" class="justify"></p>
+            <br /><br />
+            <p id="para2" class="justify"></p>
+            <br /><br />
+            <p id="vehicleInfo"></p>
+            <br /><br />
+            <p id="cityDate"></p>
+            <br /><br /><br />
+            <p class="center">______________________________________________</p>
+            <p class="center"><b>(Assinatura reconhecida por autenticidade)</b></p>
+        </div>
     </div>
 
     <script>
-    // Função robusta para extrair campos dos contratos em PDF
+    // Função para extrair campos dos contratos em PDF
     function extractFields(text) {
         const lines = text.split(/\n+/).map(l => l.trim()).filter(l => l);
         let name = '', address = '', bairro = '', cep = '', city = '', state = '', cnpj = '', model = '', plate = '', ano = '', chassis = '', renavam = '', color = '';
-        // Captura CPF/CNPJ diretamente do rótulo "CPF/CNPJ:" se existir
         const cpfCnpjMatch = text.match(/CPF\/CNPJ\s*:\s*([\d\.\/\-]+)/i);
         if (cpfCnpjMatch) {
             cnpj = cpfCnpjMatch[1];
         } else {
-            // Fallback: última ocorrência de CNPJ no documento
             const cnpjPattern = /\d{2}\.\d{3}\.\d{3}\/\d{4}\-\d{2}/g;
             const cnpjList = text.match(cnpjPattern);
             if (cnpjList && cnpjList.length) {
                 cnpj = cnpjList[cnpjList.length - 1];
             }
         }
-        // Nome: captura até vírgula ou rótulos e remove sufixos
         const nameMatch = text.match(/Cliente\s*:\s*([^\n,]+)/i);
         if (nameMatch) {
             let nm = nameMatch[1];
             nm = nm.split(/CPF|CNPJ|Cadastro/i)[0];
             name = nm.trim();
         }
-        // Endereço: tenta capturar a partir do rótulo "Endereço:" se existir
         const enderecoMatch = text.match(/Endere[cç]o\s*:\s*([^\n,]+)/i);
         if (enderecoMatch) {
             address = enderecoMatch[1].trim();
         } else {
-            // Fallback: procura linha após o cliente que contém dígitos ou palavras típicas de logradouro
             if (lines.length) {
                 const nameLineIndex = lines.findIndex(l => /Cliente\s*:/i.test(l));
                 if (nameLineIndex !== -1) {
                     for (let j = nameLineIndex + 1; j < Math.min(nameLineIndex + 6, lines.length); j++) {
                         const l = lines[j];
                         if (/Bairro\s*:/i.test(l) || /Proposta|Forma|Fones/i.test(l)) break;
-                        // Se possui números ou palavragens de logradouro assume como endereço
                         if (/[0-9]/.test(l) || /(RUA|AV|AV\.|ALAMEDA|TRAV|ROD|ESTR)/i.test(l)) {
                             let addr = l.split(/I\.E\.|CNPJ:|CPF:|Bairro:/i)[0].trim();
                             if (addr) {
@@ -159,12 +211,9 @@
                 }
             }
         }
-        // Bairro e CEP
-        // Procura bairro e CEP a partir da posição do cliente, para capturar os dados do comprador (e não da empresa)
         if (lines.length) {
             const clientIdx = lines.findIndex(l => /Cliente\s*:/i.test(l));
             if (clientIdx !== -1) {
-                // Busca o primeiro 'Bairro:' nas próximas linhas após o cliente
                 for (let j = clientIdx; j < Math.min(clientIdx + 10, lines.length); j++) {
                     const l = lines[j];
                     const bm = l.match(/Bairro\s*:\s*([^\n,]+)/i);
@@ -173,7 +222,6 @@
                         break;
                     }
                 }
-                // Busca o primeiro 'CEP:' nas próximas linhas após o cliente
                 for (let j = clientIdx; j < Math.min(clientIdx + 10, lines.length); j++) {
                     const l = lines[j];
                     const cm = l.match(/CEP\s*:\s*([\d\-]+)/i);
@@ -184,7 +232,6 @@
                 }
             }
         }
-        // Se não encontrou bairro/CEP nas proximidades do cliente, faz uma busca global
         if (!bairro) {
             const bairroMatches = [...text.matchAll(/Bairro\s*:\s*([^\n,]+)/gi)];
             if (bairroMatches.length) {
@@ -197,15 +244,11 @@
                 cep = cepMatches[cepMatches.length - 1][1];
             }
         }
-        // Cidade e estado
         if (bairro) {
-            // tenta extrair cidade e estado a partir da linha que contém o bairro
             const bIndex = lines.findIndex(l => /Bairro\s*:/i.test(l));
             if (bIndex !== -1) {
-                // procura nas linhas seguintes por uma linha que contenha um estado (sigla)
                 for (let k = bIndex; k < Math.min(bIndex + 4, lines.length); k++) {
                     const l = lines[k];
-                    // procura por padrão "Cidade - nome do estado - UF"
                     const csMatch = l.match(/([^\-]+)\s*-\s*[^\-]+\s*-\s*([A-Z]{2})/i);
                     if (csMatch) {
                         city = csMatch[1].trim();
@@ -215,7 +258,6 @@
                 }
             }
         }
-        // Se ainda não conseguiu cidade/estado, busca por padrão "Cidade - estado - UF" somente após a ocorrência de "Cliente"
         if (!city || !state) {
             let subtext = text;
             const clientPos = text.toLowerCase().indexOf('cliente');
@@ -228,18 +270,13 @@
                 state = cityStateMatch[2].trim();
             }
         }
-        // Modelo do veículo
         const modelMatch = text.match(/Ve[ií]culo\s*:\s*([^\n]+?)(?=\s+Placa|\s+Chassi|\n)/i);
         if (modelMatch) {
             model = modelMatch[1].trim();
         }
-        // Placa
-        // Primeiro tenta capturar a placa usando o rótulo "Placa:" exatamente na seção de dados do veículo.  
-        // Placa - lógica robusta para capturar placas que podem aparecer antes ou depois do rótulo "Placa:"
         let plateCandidate = '';
         const placaIndex = text.search(/Placa/i);
         if (placaIndex >= 0) {
-            // Verifica até 25 caracteres antes do índice de "Placa" para encontrar a placa antes do rótulo
             const start = Math.max(0, placaIndex - 25);
             const beforeSegment = text.substring(start, placaIndex);
             const beforeMatch = beforeSegment.match(/([A-Z]{3}[A-Z0-9\-]{4,5})\s*$/i);
@@ -253,7 +290,6 @@
                     plateCandidate = raw;
                 }
             }
-            // Se não encontrou antes, tenta capturar logo após o rótulo "Placa:" no segmento seguinte
             if (!plateCandidate) {
                 const afterSegment = text.substring(placaIndex);
                 const afterMatch = afterSegment.match(/Placa\s*:\s*([A-Z0-9\-]{3,8})/i);
@@ -269,7 +305,6 @@
                 }
             }
         }
-        // Se ainda não encontrou pelo método posicional, recorre à primeira ocorrência global de "Placa:" sem contexto
         if (!plateCandidate) {
             const placaLabelRegex = /Placa\s*:\s*([A-Z0-9\-]+)/i;
             const placaMatch = text.match(placaLabelRegex);
@@ -284,7 +319,6 @@
                 }
             }
         }
-        // Fallback global: procura padrão Mercosul no texto inteiro se nada foi encontrado
         if (!plateCandidate) {
             const platePatternGlobal = /([A-Z]{3}\-?[0-9][A-Z][0-9]{2})/gi;
             const plateList = text.match(platePatternGlobal);
@@ -301,11 +335,8 @@
             }
         }
         plate = plateCandidate;
-        // Ano/Modelo
-        // Procura "Ano/Modelo" e permite que os dígitos estejam após caracteres não numéricos (incluindo quebras de linha)
         let anoMatch = text.match(/Ano\s*\/\s*Modelo[^0-9]*([0-9]{2}\/[0-9]{2}|[0-9]{4}\/[0-9]{4})/i);
         if (!anoMatch) {
-            // Fallback: captura o primeiro padrão de dois dígitos (1-2) separados por barra (evita datas como 07/10)
             const genericYear = text.match(/\b([1-2][0-9]\/[1-2][0-9])\b/);
             if (genericYear) {
                 anoMatch = [null, genericYear[1]];
@@ -313,23 +344,19 @@
         }
         if (anoMatch) {
             ano = anoMatch[1];
-            // Converte formato 2 dígitos/2 dígitos para 4 dígitos/4 dígitos
             if (/^[0-9]{2}\/[0-9]{2}$/.test(ano)) {
                 const parts = ano.split('/');
                 ano = '20' + parts[0] + '/20' + parts[1];
             }
         }
-        // Chassi
         const chassiMatch = text.match(/Chassi\s*:?\s*([A-Za-z0-9]+)/i);
         if (chassiMatch) {
             chassis = chassiMatch[1];
         }
-        // Renavam
         const renMatch = text.match(/Renavam\s*:?\s*(\d+)/i);
         if (renMatch) {
             renavam = renMatch[1];
         }
-        // Cor
         const colorMatch = text.match(/Cor\s*:\s*([^/\n]+)/i);
         if (colorMatch) {
             color = colorMatch[1].split('/')[0].trim();
@@ -337,10 +364,67 @@
         return { name, cnpj, address, bairro, cep, city, state, model, plate, ano, chassis, renavam, color };
     }
 
-    // Processa arquivo PDF selecionado
-    document.getElementById('fileInput').addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
+    // Elementos DOM
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const generateBtn = document.getElementById('generateBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const statusMessage = document.getElementById('statusMessage');
+    const previewSection = document.getElementById('previewSection');
+
+    // Função para mostrar mensagens de status
+    function showStatus(message, color = '#10b981') {
+        statusMessage.style.display = 'block';
+        statusMessage.textContent = message;
+        statusMessage.style.color = color;
+        setTimeout(() => {
+            statusMessage.style.display = 'none';
+        }, 3000);
+    }
+
+    // Função para limpar o formulário e a pré-visualização
+    function clearForm() {
+        fileInput.value = '';
+        generateBtn.disabled = true;
+        clearBtn.disabled = true;
+        previewSection.style.display = 'none';
+        document.getElementById('para1').innerHTML = '';
+        document.getElementById('para2').innerHTML = '';
+        document.getElementById('vehicleInfo').innerHTML = '';
+        document.getElementById('cityDate').innerHTML = '';
+        showStatus('Formulário limpo!', '#6b7280');
+    }
+
+    // Eventos de Drag-and-Drop
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file && file.type === 'application/pdf') {
+            fileInput.files = e.dataTransfer.files;
+            showStatus('Arquivo PDF carregado com sucesso!');
+            processFile(file);
+        } else {
+            showStatus('Por favor, arraste um arquivo PDF válido.', '#ef4444');
+        }
+    });
+
+    // Clique na drop zone para abrir o seletor de arquivos
+    dropZone.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    // Processa arquivo PDF selecionado ou arrastado
+    function processFile(file) {
         const reader = new FileReader();
         reader.onload = function() {
             const typedarray = new Uint8Array(this.result);
@@ -351,7 +435,7 @@
                         const data = extractFields(strings);
                         // Monta os parágrafos com os dados extraídos
                         document.getElementById('para1').innerHTML =
-                            `Por este instrumento particular de procuração,  <b>${data.name || ''}</b>, CPF/CNPJ:  <b>${data.cnpj || ''}</b>, ENDEREÇO: <b>${data.address || ''}</b>, BAIRRO: <b>${data.bairro || ''}</b>, CEP: <b>${data.cep || ''}</b>, CIDADE: <b>${data.city || ''}</b>, ESTADO: <b>${data.state || ''}</b>.`;
+                            `Por este instrumento particular de procuração, <b>${data.name || ''}</b>, CPF/CNPJ: <b>${data.cnpj || ''}</b>, ENDEREÇO: <b>${data.address || ''}</b>, BAIRRO: <b>${data.bairro || ''}</b>, CEP: <b>${data.cep || ''}</b>, CIDADE: <b>${data.city || ''}</b>, ESTADO: <b>${data.state || ''}</b>.`;
                         document.getElementById('para2').innerHTML =
                             'Dados pelos quais responsabilizo-me civil e criminalmente, nomeio e constituo meu bastante procurador: RAMIRO ILHA, portador do CPF: 375.722.450-72 e RG: 9021949971, domiciliado na Rua Dr. Voltaire Pires, Nº 430, na cidade de Porto Alegre/RS, para os fins específicos de assinar a GRT, Guia de Responsabilidade Técnica, e também o "DE ACORDO" na compra do veículo descrito abaixo:';
                         document.getElementById('vehicleInfo').innerHTML =
@@ -362,24 +446,37 @@
                             `RENAVAM: <b>${data.renavam || ''}</b><br>` +
                             `COR: <b>${data.color || ''}</b>`;
                         document.getElementById('cityDate').innerHTML =
-                            // Linha de cidade/data ajustada para não ultrapassar a largura da página.  
-                            'CIDADE: ________________, ESTADO: ___, ____ de _______________ de ____.';
+                            'CIDADE: _________________, ESTADO: ____, ____ de _______________ de _____.';
+                        // Exibe a seção de pré-visualização
+                        previewSection.style.display = 'block';
                         // Define nome do arquivo de saída
                         const sanitizedPlate = data.plate ? data.plate.replace(/[^A-Za-z0-9]/g, '') : 'PLACADESCONHECIDA';
                         const sanitizedName = data.name ? data.name.replace(/\s+/g, '_') : 'CLIENTE';
-                        document.getElementById('generateBtn').dataset.filename = `PROCURACAO_${sanitizedPlate}_${sanitizedName}.pdf`;
-                        document.getElementById('generateBtn').disabled = false;
+                        generateBtn.dataset.filename = `PROCURACAO_${sanitizedPlate}_${sanitizedName}.pdf`;
+                        generateBtn.disabled = false;
+                        clearBtn.disabled = false;
+                        showStatus('Dados extraídos! Revise a procuração abaixo.');
                     });
                 });
             });
         };
         reader.readAsArrayBuffer(file);
+    }
+
+    // Evento de mudança no input de arquivo
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file && file.type === 'application/pdf') {
+            showStatus('Arquivo PDF selecionado com sucesso!');
+            processFile(file);
+        } else {
+            showStatus('Por favor, selecione um arquivo PDF válido.', '#ef4444');
+        }
     });
 
     // Gera o PDF a partir do template
-    document.getElementById('generateBtn').addEventListener('click', function() {
+    generateBtn.addEventListener('click', function() {
         const element = document.getElementById('procuraTemplate');
-        element.style.display = 'block';
         const filename = this.dataset.filename || 'procuracao.pdf';
         const opt = {
             margin: 20,
@@ -388,9 +485,12 @@
             jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
         };
         html2pdf().set(opt).from(element).save().then(() => {
-            element.style.display = 'none';
+            showStatus('PDF gerado e baixado com sucesso!');
         });
     });
+
+    // Limpa o formulário
+    clearBtn.addEventListener('click', clearForm);
     </script>
 </body>
 </html>
