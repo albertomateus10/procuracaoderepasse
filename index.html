@@ -137,8 +137,8 @@
 </head>
 <body>
     <div class="container">
-        <h2>Gerador de Procuração de Repasse</h2>
-        <p class="instructions">Arraste e solte o PDF do contrato na área abaixo ou clique para selecionar. Após o upload, os dados serão extraídos e a procuração será exibida para revisão antes de gerar o PDF.</p>
+        <h2>Gerador de Procuração</h2>
+        <p class="instructions">Arraste e solte um arquivo PDF do contrato na área abaixo ou clique para selecionar. Após o upload, os dados serão extraídos e a procuração será exibida para revisão antes de gerar o PDF.</p>
         
         <div class="drop-zone" id="dropZone">
             <p>Arraste e solte o arquivo PDF aqui ou clique para selecionar</p>
@@ -446,7 +446,7 @@
                             `RENAVAM: <b>${data.renavam || ''}</b><br>` +
                             `COR: <b>${data.color || ''}</b>`;
                         document.getElementById('cityDate').innerHTML =
-                            'CIDADE: _________________, ESTADO: ____, ____ de _______________ de _____.';
+                            'CIDADE: ________________, ESTADO: ___, ____ de _______________ de ____.';
                         // Exibe a seção de pré-visualização
                         previewSection.style.display = 'block';
                         // Define nome do arquivo de saída
