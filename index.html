@@ -22,9 +22,7 @@
       --card: #fff;
       --text: #222;
       --muted:#666;
-
-      /* >>> ajuste solicitado: assinatura mais para baixo */
-      --signature-offset: 96px; /* 48px antes; agora “um pouco” mais baixo */
+      --signature-offset: 96px; /* mantém a assinatura mais para baixo */
     }
     html, body{ margin:0; padding:0; background:var(--bg); color:var(--text); font-family: Arial, Helvetica, sans-serif; }
 
@@ -52,7 +50,7 @@
     button:disabled{ background:#c9c9c9; cursor:not-allowed; }
     button:hover:not(:disabled){ filter: brightness(.92); }
 
-    /* ===== Seção de pré-visualização inline ===== */
+    /* ===== Pré-visualização inline ===== */
     .preview-section{
       max-width: 1000px; margin: 16px auto 28px; background: var(--card);
       padding: 16px 18px; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.06);
@@ -64,9 +62,7 @@
       display:flex; align-items:center; justify-content:center;
       background:#111; padding:14px; border-radius:10px;
     }
-    .preview-viewport{
-      transform-origin: top left;
-    }
+    .preview-viewport{ transform-origin: top left; }
     .preview-page{
       width: var(--a4-w);
       height: var(--a4-h);
@@ -83,15 +79,15 @@
     .justify{ text-align:justify; }
     .center{ text-align:center; }
 
-    /* <<< AQUI: assinatura mais baixa >>> */
+    /* Assinatura */
     .signature{ margin-top: var(--signature-offset); }
     .signature .line{ text-align:center; margin:24px 0 6px; }
     .signature .note{ text-align:center; font-weight:bold; }
 
-    /* Espaço extra antes de “CIDADE/ESTADO” (ajuste anterior) */
+    /* Espaço extra antes de “CIDADE/ESTADO” (mantido) */
     #p_cityDate, #pp_cityDate { margin-top: 2em; }
 
-    /* ===== Host offscreen (render para html2canvas) ===== */
+    /* Host offscreen (render para html2canvas) */
     .offscreen{
       position: fixed; left: -10000px; top: -10000px;
       width: var(--a4-w); height: var(--a4-h);
@@ -122,7 +118,6 @@
   <section class="preview-section" id="previewSection">
     <div class="preview-header">
       <div class="preview-title">Pré-visualização (fiel ao PDF)</div>
-      <small style="color:#666">Escalada para caber no espaço; o PDF usa o tamanho A4 real.</small>
     </div>
     <div class="preview-wrap">
       <div class="preview-viewport" id="previewViewport">
@@ -192,79 +187,204 @@
     let currentData = null;
     let pdfFilename = 'procuracao.pdf';
 
+    // ===== Helpers =====
+    const onlyDigits = (s) => (s || '').replace(/\D+/g, '');
+    const isCPF = (s) => onlyDigits(s).length === 11;
+    const isCNPJ = (s) => onlyDigits(s).length === 14;
+
+    const isDocLabel = (l) => /(C\.?P\.?F\.?|CPF|CNPJ|R\.?G\.?|RG|I\.?E\.?|IE)\s*:/i.test(l);
+    const isPhoneLine = (l) => /\b(Fone|Fones|Telefone|Tel\.?)\b/i.test(l);
+    const isStopLabel = (l) => /\b(Bairro|CEP|Cidade|Estado)\s*:/i.test(l) || isPhoneLine(l) || isDocLabel(l);
+
+    // Heurística de logradouro (mais tolerante para PF)
+    const looksLikeStreet = (l) => {
+      if (!l) return false;
+      const hasStreetWord = /(RUA|R\.|AVENIDA|AV\.?|ALAMEDA|AL\.|TRAVESSA|TRAV\.|RODOVIA|ROD\.|ESTRADA|ESTR\.|PRAÇA|PRACA|CONDOMÍNIO|COND\.|LOTEAMENTO|LOT\.)/i.test(l);
+      const hasNumber = /(^|,|\s)\d{1,5}(\s|$|,)/.test(l) || /\bN[º°o]?\b/i.test(l);
+      // aceita também padrões "RUA XXX, 123 AP 301" etc.
+      return hasStreetWord || (/[A-ZÁ-Ú]{3,}/i.test(l) && hasNumber);
+    };
+
+    // Limpa caudas e remove trechos de documentos dentro da linha
+    function cleanAddress(s){
+      if (!s) return '';
+      s = s.replace(/(?:C\.?P\.?F\.?|CPF|CNPJ|R\.?G\.?|RG|I\.?E\.?|IE)\s*:\s*[\w\.\-\/]+/gi, ''); // remove C.P.F.: xxx etc
+      s = s.split(/,(?=\s*(Bairro|CEP|Cidade|Estado)\s*:)/i)[0];
+      s = s.split(/\b(Bairro|CEP|Cidade|Estado)\s*:/i)[0];
+      return s.replace(/\s{2,}/g,' ').replace(/^[,\.;\-\s]+|[,\.;\-\s]+$/g,'').trim();
+    }
+
+    // Coleta 1–2 linhas de endereço a partir de um índice
+    function collectAddressFrom(lines, startIdx){
+      let out = cleanAddress(lines[startIdx]);
+      let used = 1;
+
+      // Se a primeira linha for muito curta (ex.: só o nome da via), tenta anexar a próxima
+      for (let k = 1; k <= 2 && startIdx + k < lines.length; k++){
+        const nxt = lines[startIdx + k];
+        if (!nxt || isStopLabel(nxt)) break;
+        const cleaned = cleanAddress(nxt);
+        if (!cleaned) continue;
+        // concatena se ainda parecer parte do logradouro (número/complemento)
+        if (looksLikeStreet(cleaned) || /,\s*\d+|APT|AP\.?|BL\.?|QD\.?|LT\.?/i.test(cleaned)) {
+          out = (out ? (out + ' ' + cleaned) : cleaned).trim();
+          used++;
+        } else {
+          break;
+        }
+      }
+      return out.trim();
+    }
+
     // ====== Extração de dados do PDF ======
     function extractFields(text) {
       const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
+
       let name='', address='', bairro='', cep='', city='', state='', cnpj='',
           model='', plate='', ano='', chassis='', renavam='', color='';
 
-      const cpfCnpjMatch = text.match(/CPF\/CNPJ\s*:\s*([\d\.\/\-]+)/i);
-      if (cpfCnpjMatch) cnpj = cpfCnpjMatch[1];
-      else {
-        const cnpjPattern = /\d{2}\.\d{3}\.\d{3}\/\d{4}\-\d{2}/g;
-        const cnpjList = text.match(cnpjPattern);
-        if (cnpjList && cnpjList.length) cnpj = cnpjList[cnpjList.length - 1];
+      // --------- CPF/CNPJ (mantido com validação de tamanho e evitando telefone) ---------
+      // CNPJ rotulado > CPF rotulado > "CPF/CNPJ:" > CNPJ solto
+      const findLabeledCNPJ = () => {
+        for (const l of lines) {
+          if (isPhoneLine(l)) continue;
+          const m = l.match(/CNPJ\s*:?\s*([\d\.\-\/]{14,18})/i);
+          if (m && isCNPJ(m[1])) return m[1];
+        }
+        return null;
+      };
+      const findLabeledCPF = () => {
+        for (const l of lines) {
+          if (isPhoneLine(l)) continue;
+          const m = l.match(/(?:C\.?P\.?F\.?|CPF)\s*:?\s*([\d\.\-]{11,14})/i);
+          if (m && isCPF(m[1])) return m[1];
+        }
+        return null;
+      };
+      const findMixedDoc = () => {
+        for (const l of lines) {
+          if (isPhoneLine(l)) continue;
+          const m = l.match(/CPF\/CNPJ\s*:\s*([^\n,]+)/i);
+          if (m) {
+            const d = onlyDigits(m[1]);
+            if (d.length === 14 || d.length === 11) return m[1];
+          }
+        }
+        return null;
+      };
+      const findLooseCNPJ = () => {
+        const reFmt = /\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/;
+        const re14d = /(?:\D|^)(\d{2}\D?\d{3}\D?\d{3}\D?\d{4}\D?\d{2})(?:\D|$)/;
+        for (const l of lines) {
+          if (isPhoneLine(l)) continue;
+          const m1 = l.match(reFmt);
+          if (m1) return m1[0];
+          const m2 = l.match(re14d);
+          if (m2 && isCNPJ(m2[1])) return m2[1];
+        }
+        return null;
+      };
+
+      let doc = findLabeledCNPJ() || findLabeledCPF() || findMixedDoc() || findLooseCNPJ();
+      if (doc) {
+        const d = onlyDigits(doc);
+        if (d.length === 14 || d.length === 11) cnpj = doc;
       }
 
+      // --------- Nome ---------
       const nameMatch = text.match(/Cliente\s*:\s*([^\n,]+)/i);
-      if (nameMatch) { let nm = nameMatch[1]; nm = nm.split(/CPF|CNPJ|Cadastro/i)[0]; name = nm.trim(); }
+      if (nameMatch) {
+        let nm = nameMatch[1];
+        nm = nm.split(/CPF|C\.?P\.?F|CNPJ|Cadastro/i)[0];
+        name = nm.trim();
+      }
 
-      const enderecoMatch = text.match(/Endere[cç]o\s*:\s*([^\n,]+)/i);
-      if (enderecoMatch) address = enderecoMatch[1].trim();
-      else if (lines.length) {
-        const nameLineIndex = lines.findIndex(l => /Cliente\s*:/i.test(l));
-        if (nameLineIndex !== -1) {
-          for (let j = nameLineIndex + 1; j < Math.min(nameLineIndex + 6, lines.length); j++) {
+      // --------- ENDEREÇO (CPF e CNPJ) — reforçado p/ CPF ---------
+      // 1) Tenta rótulo "Endereço:"
+      const enderecoLabelIdx = lines.findIndex(l => /Endere[cç]o\s*:/i.test(l));
+      if (enderecoLabelIdx !== -1) {
+        // pega da própria linha do rótulo…
+        let candidate = cleanAddress(lines[enderecoLabelIdx].replace(/^.*Endere[cç]o\s*:\s*/i, ''));
+        // …se vazio/curto, tenta coletar nas 2 próximas linhas (ignorando rótulos/telefone)
+        if (!candidate || candidate.length < 6) {
+          for (let k = 1; k <= 2 && enderecoLabelIdx + k < lines.length; k++) {
+            const nxt = lines[enderecoLabelIdx + k];
+            if (!nxt || isStopLabel(nxt)) break;
+            const cleaned = cleanAddress(nxt);
+            if (cleaned && (looksLikeStreet(cleaned) || candidate === '')) {
+              candidate = candidate ? (candidate + ' ' + cleaned) : cleaned;
+            }
+          }
+        }
+        address = (candidate || '').trim();
+      }
+
+      // 2) Se ainda não achou, após "Cliente:" procurar primeira linha que pareça logradouro,
+      //    pulando linhas de CPF/CNPJ/RG/Telefone; depois concatenar 1 próxima se fizer sentido.
+      if (!address) {
+        const clientIdx = lines.findIndex(l => /Cliente\s*:/i.test(l));
+        if (clientIdx !== -1) {
+          for (let j = clientIdx + 1; j < Math.min(clientIdx + 12, lines.length); j++) {
             const l = lines[j];
-            if (/Bairro\s*:/i.test(l) || /Proposta|Forma|Fones/i.test(l)) break;
-            if (/[0-9]/.test(l) || /(RUA|AV|AV\.|ALAMEDA|TRAV|ROD|ESTR)/i.test(l)) {
-              let addr = l.split(/I\.E\.|CNPJ:|CPF:|Bairro:/i)[0].trim();
-              if (addr) { address = addr; break; }
+            if (!l) continue;
+            if (isStopLabel(l)) {
+              // se a linha é só rótulo (ex.: "C.P.F.: ..."), pula e continua procurando logradouro
+              continue;
+            }
+            const cleaned = cleanAddress(l);
+            if (looksLikeStreet(cleaned)) {
+              address = collectAddressFrom(lines.map(cleanAddress), j);
+              break;
             }
           }
         }
       }
 
-      if (lines.length) {
-        const clientIdx = lines.findIndex(l => /Cliente\s*:/i.test(l));
-        if (clientIdx !== -1) {
-          for (let j = clientIdx; j < Math.min(clientIdx + 10, lines.length); j++) {
-            const bm = lines[j].match(/Bairro\s*:\s*([^\n,]+)/i);
-            if (bm) { bairro = bm[1].trim(); break; }
-          }
-          for (let j = clientIdx; j < Math.min(clientIdx + 10, lines.length); j++) {
-            const cm = lines[j].match(/CEP\s*:\s*([\d\-]+)/i);
-            if (cm) { cep = cm[1]; break; }
+      // 3) Fallback final: se ainda vazio e havia linha com CPF que também tinha logradouro após vírgula/hífen
+      if (!address) {
+        const cpfLineIdx = lines.findIndex(l => /(?:C\.?P\.?F\.?|CPF)\s*:/i.test(l));
+        if (cpfLineIdx !== -1) {
+          let tail = lines[cpfLineIdx].replace(/.*?(?:C\.?P\.?F\.?|CPF)\s*:\s*[\d\.\-]{11,14}\s*[,;\-–—]?\s*/i, '');
+          tail = cleanAddress(tail);
+          if (looksLikeStreet(tail)) {
+            address = tail;
+            // tenta anexar próxima linha se parecer complemento
+            if (cpfLineIdx + 1 < lines.length && !isStopLabel(lines[cpfLineIdx + 1])) {
+              const nextClean = cleanAddress(lines[cpfLineIdx + 1]);
+              if (nextClean && (looksLikeStreet(nextClean) || /,\s*\d+|APT|AP\.?|BL\.?|QD\.?|LT\.?/i.test(nextClean))) {
+                address = (address + ' ' + nextClean).trim();
+              }
+            }
           }
         }
       }
-      if (!bairro) {
-        const bairroMatches = [...text.matchAll(/Bairro\s*:\s*([^\n,]+)/gi)];
-        if (bairroMatches.length) bairro = bairroMatches[bairroMatches.length - 1][1].trim();
-      }
-      if (!cep) {
-        const cepMatches = [...text.matchAll(/CEP\s*:\s*([\d\-]+)/gi)];
-        if (cepMatches.length) cep = cepMatches[cepMatches.length - 1][1];
-      }
 
+      // --------- Bairro / CEP ---------
+      const bairroMatchGlobal = [...text.matchAll(/Bairro\s*:\s*([^\n,]+)/gi)];
+      if (bairroMatchGlobal.length) bairro = bairroMatchGlobal[bairroMatchGlobal.length - 1][1].trim();
+
+      const cepMatchGlobal = [...text.matchAll(/CEP\s*:\s*([\d\-\.]+)/gi)];
+      if (cepMatchGlobal.length) cep = cepMatchGlobal[cepMatchGlobal.length - 1][1];
+
+      // --------- Cidade / UF ---------
       if (!city || !state) {
-        let subtext = text;
+        let sub = text;
         const clientPos = text.toLowerCase().indexOf('cliente');
-        if (clientPos !== -1) subtext = text.substring(clientPos);
-        const cityStateMatch = subtext.match(/([^\-\n]+)\s*-\s*[^\-\n]+\s*-\s*([A-Z]{2})/i);
-        if (cityStateMatch) { city = cityStateMatch[1].trim(); state = cityStateMatch[2].trim(); }
+        if (clientPos !== -1) sub = text.substring(clientPos);
+        const m = sub.match(/([^\-\n]+)\s*-\s*[^\-\n]+\s*-\s*([A-Z]{2})/i);
+        if (m) { city = m[1].trim(); state = m[2].trim(); }
       }
 
+      // --------- Veículo (mantido) ---------
       const modelMatch = text.match(/Ve[ií]culo\s*:\s*([^\n]+?)(?=\s+Placa|\s+Chassi|\n)/i);
       if (modelMatch) model = modelMatch[1].trim();
 
-      // Placa (antes/depois do rótulo)
       let plateCandidate = '';
       const placaIndex = text.search(/Placa/i);
       if (placaIndex >= 0) {
-        const start = Math.max(0, placaIndex - 25);
-        const beforeSegment = text.substring(start, placaIndex);
-        const beforeMatch = beforeSegment.match(/([A-Z]{3}[A-Z0-9\-]{4,5})\s*$/i);
+        const start = Math.max(0, placaIndex - 30);
+        const before = text.substring(start, placaIndex);
+        const beforeMatch = before.match(/([A-Z]{3}[A-Z0-9\-]{4,5})\s*$/i);
         if (beforeMatch) {
           let raw = beforeMatch[1].replace(/\s+/g,'').toUpperCase();
           if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) plateCandidate = raw.slice(0,3)+'-'+raw.slice(3);
@@ -272,8 +392,8 @@
           else plateCandidate = raw;
         }
         if (!plateCandidate) {
-          const afterSegment = text.substring(placaIndex);
-          const afterMatch = afterSegment.match(/Placa\s*:\s*([A-Z0-9\-]{3,8})/i);
+          const after = text.substring(placaIndex);
+          const afterMatch = after.match(/Placa\s*:\s*([A-Z0-9\-]{3,8})/i);
           if (afterMatch) {
             let raw = afterMatch[1].trim().replace(/\s+/g,'').toUpperCase();
             if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) plateCandidate = raw.slice(0,3)+'-'+raw.slice(3);
@@ -283,22 +403,13 @@
         }
       }
       if (!plateCandidate) {
-        const placaMatch = text.match(/Placa\s*:\s*([A-Z0-9\-]+)/i);
-        if (placaMatch) {
-          let raw = placaMatch[1].trim().replace(/\s+/g,'').toUpperCase();
-          if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) plateCandidate = raw.slice(0,3)+'-'+raw.slice(3);
-          else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(raw)) plateCandidate = raw;
-          else plateCandidate = raw;
-        }
-      }
-      if (!plateCandidate) {
         const platePatternGlobal = /([A-Z]{3}\-?[0-9][A-Z][0-9]{2})/gi;
-        const plateList = text.match(platePatternGlobal);
-        if (plateList && plateList.length) {
-          let candidate = plateList[0].replace(/\s|-/g,'').toUpperCase();
-          if (/^[A-Z]{3}[0-9]{4}$/.test(candidate)) plate = candidate.slice(0,3)+'-'+candidate.slice(3);
-          else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(candidate)) plate = candidate;
-          else plate = candidate;
+        const list = text.match(platePatternGlobal);
+        if (list && list.length) {
+          let raw = list[0].replace(/\s|-/g,'').toUpperCase();
+          if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) plate = raw.slice(0,3)+'-'+raw.slice(3);
+          else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(raw)) plate = raw;
+          else plate = raw;
         }
       }
       if (!plate && plateCandidate) plate = plateCandidate;
@@ -309,9 +420,9 @@
         if (genericYear) anoMatch = [null, genericYear[1]];
       }
       if (anoMatch) {
-        let anoVal = anoMatch[1];
-        if (/^[0-9]{2}\/[0-9]{2}$/.test(anoVal)) { const p = anoVal.split('/'); ano = '20'+p[0]+'/20'+p[1]; }
-        else ano = anoVal;
+        let val = anoMatch[1];
+        if (/^[0-9]{2}\/[0-9]{2}$/.test(val)) { const p = val.split('/'); ano = '20'+p[0]+'/20'+p[1]; }
+        else ano = val;
       }
 
       const chassiMatch = text.match(/Chassi\s*:?\s*([A-Za-z0-9]+)/i);
@@ -347,7 +458,8 @@
         `RENAVAM: <b>${data.renavam || ''}</b><br>` +
         `COR: <b>${data.color || ''}</b>`;
 
-      els.p_cityDate.innerText = 'CIDADE: ________________, ESTADO: ___, ____ de _______________ de ____.';
+      els.p_cityDate.innerText =
+        'CIDADE: ________________, ESTADO: ___, ____ de _______________ de ____.';
     }
 
     function fillPrint(data){
@@ -370,10 +482,11 @@
         `RENAVAM: <b>${data.renavam || ''}</b><br>` +
         `COR: <b>${data.color || ''}</b>`;
 
-      els.pp_cityDate.innerText = 'CIDADE: ________________, ESTADO: ___, ____ de _______________ de ____.';
+      els.pp_cityDate.innerText =
+        'CIDADE: ________________, ESTADO: ___, ____ de _______________ de ____.';
     }
 
-    // ====== Autoscale para caber em 1 página A4 ======
+    // ====== Autoscale p/ A4 ======
     function autoscaleToA4(node){
       node.style.transform = 'scale(1)';
       const contentH = node.scrollHeight;
@@ -449,19 +562,19 @@
     }
 
     // ====== Eventos ======
-    els.fileInput.addEventListener('change', (e)=>{
-      const f = e.target.files[0]; handlePDFFile(f);
-    });
-    els.dropArea.addEventListener('dragover', (e)=>{ e.preventDefault(); els.dropArea.classList.add('dragover'); });
-    els.dropArea.addEventListener('dragleave', ()=> els.dropArea.classList.remove('dragover'));
-    els.dropArea.addEventListener('drop', (e)=>{
-      e.preventDefault(); els.dropArea.classList.remove('dragover');
+    const da = document.getElementById('dropArea');
+    const fi = document.getElementById('fileInput');
+    fi.addEventListener('change', (e)=>{ const f = e.target.files[0]; handlePDFFile(f); });
+    da.addEventListener('dragover', (e)=>{ e.preventDefault(); da.classList.add('dragover'); });
+    da.addEventListener('dragleave', ()=> da.classList.remove('dragover'));
+    da.addEventListener('drop', (e)=>{
+      e.preventDefault(); da.classList.remove('dragover');
       const f = e.dataTransfer.files[0]; handlePDFFile(f);
     });
 
     els.generateBtn.addEventListener('click', generatePDF);
     els.clearBtn.addEventListener('click', ()=>{
-      els.fileInput.value = '';
+      fi.value = '';
       els.generateBtn.disabled = true;
       els.clearBtn.disabled = true;
       els.previewSection.style.display = 'none';
