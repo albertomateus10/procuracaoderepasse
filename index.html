@@ -1,496 +1,481 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="utf-8">
-    <title>Gerador de Procuração</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <style>
-        body {
-            background-color: #f4f6f9;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .container {
-            max-width: 800px;
-            background: #ffffff;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-            margin-bottom: 40px;
-        }
-        h2 {
-            text-align: center;
-            color: #2c3e50;
-            margin-bottom: 20px;
-            font-size: 28px;
-        }
-        .instructions {
-            color: #6b7280;
-            line-height: 1.6;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-        .drop-zone {
-            border: 2px dashed #d1d5db;
-            border-radius: 8px;
-            padding: 40px;
-            text-align: center;
-            background-color: #f9fafb;
-            transition: all 0.3s ease;
-            margin-bottom: 20px;
-            cursor: pointer;
-        }
-        .drop-zone.dragover {
-            border-color: #3b82f6;
-            background-color: #eff6ff;
-            transform: scale(1.02);
-        }
-        .drop-zone p {
-            margin: 0;
-            color: #4b5563;
-            font-size: 16px;
-        }
-        .drop-zone input[type="file"] {
-            display: none;
-        }
-        .file-input {
-            margin-bottom: 20px;
-        }
-        input[type="file"] {
-            padding: 10px;
-            width: 100%;
-            box-sizing: border-box;
-        }
-        .button-group {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-        }
-        button {
-            padding: 12px 30px;
-            font-size: 16px;
-            color: #ffffff;
-            background-color: #3b82f6;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background-color 0.3s ease, transform 0.2s ease;
-        }
-        button:hover:not(:disabled) {
-            background-color: #2563eb;
-            transform: translateY(-2px);
-        }
-        button:disabled {
-            background-color: #d1d5db;
-            cursor: not-allowed;
-        }
-        #previewSection {
-            margin-top: 40px;
-            padding: 20px;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            display: none;
-        }
-        #previewSection h3 {
-            color: #2c3e50;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        #procuraTemplate {
-            width: 90%;
-            margin: 20px auto;
-            font-size: 12pt;
-            line-height: 1.6;
-            color: #000000;
-        }
-        #procuraTemplate .title {
-            text-align: center;
-            font-weight: bold;
-            font-size: 18pt;
-            margin-bottom: 20px;
-        }
-        #procuraTemplate .justify {
-            text-align: justify;
-        }
-        #procuraTemplate .center {
-            text-align: center;
-        }
-        #cityDate {
-            text-align: center;
-            white-space: nowrap;
-        }
-        .status-message {
-            text-align: center;
-            color: #10b981;
-            font-weight: bold;
-            margin-top: 10px;
-            display: none;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <title>Gerador de Procuração</title>
+
+  <!-- Leitura do PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js"></script>
+
+  <!-- Render e PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --a4-w: 794px;    /* 210mm @ ~96dpi */
+      --a4-h: 1123px;   /* 297mm @ ~96dpi */
+      --brand: #0b57d0;
+      --bg: #f5f5f5;
+      --card: #fff;
+      --text: #222;
+      --muted:#666;
+
+      /* >>> ajuste solicitado: assinatura mais para baixo */
+      --signature-offset: 96px; /* 48px antes; agora “um pouco” mais baixo */
+    }
+    html, body{ margin:0; padding:0; background:var(--bg); color:var(--text); font-family: Arial, Helvetica, sans-serif; }
+
+    .upload-container{
+      max-width: 760px; margin: 28px auto; background:var(--card);
+      padding: 24px 28px; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.08);
+    }
+    h2{ margin:0 0 6px; text-align:center; }
+    .instructions{ text-align:center; color:var(--muted); margin-bottom:16px; }
+
+    .drop-area{
+      display:flex; align-items:center; justify-content:center; text-align:center;
+      padding:48px 20px; border:2px dashed #cfcfcf; border-radius:10px; background:#fafafa;
+      color:#666; cursor:pointer; transition:.2s; user-select:none; -webkit-user-select:none;
+    }
+    .drop-area.dragover{ border-color: var(--brand); background:#f0f6ff; }
+    .drop-area input[type=file]{ display:none; }
+
+    .button-row{ margin-top:14px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+    button{
+      padding:10px 18px; border:0; border-radius:8px; cursor:pointer; font-weight:600;
+      background:var(--brand); color:#fff; transition:.2s;
+    }
+    button.secondary{ background:#6c757d; }
+    button:disabled{ background:#c9c9c9; cursor:not-allowed; }
+    button:hover:not(:disabled){ filter: brightness(.92); }
+
+    /* ===== Seção de pré-visualização inline ===== */
+    .preview-section{
+      max-width: 1000px; margin: 16px auto 28px; background: var(--card);
+      padding: 16px 18px; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.06);
+      display:none;
+    }
+    .preview-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+    .preview-title{ font-weight:700; }
+    .preview-wrap{
+      display:flex; align-items:center; justify-content:center;
+      background:#111; padding:14px; border-radius:10px;
+    }
+    .preview-viewport{
+      transform-origin: top left;
+    }
+    .preview-page{
+      width: var(--a4-w);
+      height: var(--a4-h);
+      background:#fff;
+      color:#000;
+      padding: 40px 48px;
+      line-height: 1.4;
+      font-size: 12pt;
+      box-sizing: border-box;
+      overflow: hidden;
+      transform-origin: top left;
+    }
+    .title{ text-align:center; font-weight:bold; font-size:18pt; }
+    .justify{ text-align:justify; }
+    .center{ text-align:center; }
+
+    /* <<< AQUI: assinatura mais baixa >>> */
+    .signature{ margin-top: var(--signature-offset); }
+    .signature .line{ text-align:center; margin:24px 0 6px; }
+    .signature .note{ text-align:center; font-weight:bold; }
+
+    /* Espaço extra antes de “CIDADE/ESTADO” (ajuste anterior) */
+    #p_cityDate, #pp_cityDate { margin-top: 2em; }
+
+    /* ===== Host offscreen (render para html2canvas) ===== */
+    .offscreen{
+      position: fixed; left: -10000px; top: -10000px;
+      width: var(--a4-w); height: var(--a4-h);
+      opacity: .01; pointer-events: none; overflow: hidden;
+      background:#fff;
+    }
+
+    *{ page-break-before:auto; page-break-after:auto; page-break-inside:avoid; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h2>Gerador de Procuração</h2>
-        <p class="instructions">Arraste e solte um arquivo PDF do contrato na área abaixo ou clique para selecionar. Após o upload, os dados serão extraídos e a procuração será exibida para revisão antes de gerar o PDF.</p>
-        
-        <div class="drop-zone" id="dropZone">
-            <p>Arraste e solte o arquivo PDF aqui ou clique para selecionar</p>
-            <input type="file" id="fileInput" accept="application/pdf" />
-        </div>
-        <p class="status-message" id="statusMessage"></p>
-        <div class="button-group">
-            <button id="generateBtn" disabled>Gerar PDF</button>
-            <button id="clearBtn" style="background-color: #6b7280;" disabled>Limpar</button>
-        </div>
-    </div>
+  <div class="upload-container">
+    <h2>Gerador de Procuração de Repasse</h2>
+    <p class="instructions">Arraste e solte o <b>PDF</b> do contrato abaixo ou clique para selecionar. A pré-visualização aparece logo abaixo e o PDF é gerado em <b>uma única página</b>.</p>
 
-    <div id="previewSection">
-        <h3>Pré-visualização da Procuração</h3>
-        <div id="procuraTemplate">
-            <div class="title">PROCURAÇÃO</div>
-            <br /><br />
-            <p id="para1" class="justify"></p>
-            <br /><br />
-            <p id="para2" class="justify"></p>
-            <br /><br />
-            <p id="vehicleInfo"></p>
-            <br /><br />
-            <p id="cityDate"></p>
-            <br /><br /><br />
-            <p class="center">______________________________________________</p>
-            <p class="center"><b>(Assinatura reconhecida por autenticidade)</b></p>
-        </div>
-    </div>
+    <label class="drop-area" id="dropArea">
+      Arraste e solte o arquivo PDF aqui ou clique para selecionar
+      <input type="file" id="fileInput" accept="application/pdf" hidden />
+    </label>
 
-    <script>
-    // Função para extrair campos dos contratos em PDF
+    <div class="button-row">
+      <button id="generateBtn" disabled>Gerar PDF</button>
+      <button id="clearBtn" class="secondary" disabled>Limpar</button>
+    </div>
+  </div>
+
+  <!-- Pré-visualização inline -->
+  <section class="preview-section" id="previewSection">
+    <div class="preview-header">
+      <div class="preview-title">Pré-visualização (fiel ao PDF)</div>
+      <small style="color:#666">Escalada para caber no espaço; o PDF usa o tamanho A4 real.</small>
+    </div>
+    <div class="preview-wrap">
+      <div class="preview-viewport" id="previewViewport">
+        <div class="preview-page" id="previewPage">
+          <div class="title">PROCURAÇÃO</div>
+          <br /><br />
+          <p id="p_para1" class="justify"></p>
+          <br />
+          <p id="p_para2" class="justify"></p>
+          <br />
+          <p id="p_vehicleInfo"></p>
+          <br />
+          <p id="p_cityDate" class="center"></p>
+          <div class="signature">
+            <p class="line">______________________________________________</p>
+            <p class="note">(Assinatura reconhecida por autenticidade)</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Host offscreen para render do PDF -->
+  <div class="offscreen" id="printHost">
+    <div class="preview-page" id="printPage">
+      <div class="title">PROCURAÇÃO</div>
+      <br /><br />
+      <p id="pp_para1" class="justify"></p>
+      <br />
+      <p id="pp_para2" class="justify"></p>
+      <br />
+      <p id="pp_vehicleInfo"></p>
+      <br />
+      <p id="pp_cityDate" class="center"></p>
+      <div class="signature">
+        <p class="line">______________________________________________</p>
+        <p class="note">(Assinatura reconhecida por autenticidade)</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const A4_W = 794;
+    const A4_H = 1123;
+
+    const els = {
+      dropArea: document.getElementById('dropArea'),
+      fileInput: document.getElementById('fileInput'),
+      generateBtn: document.getElementById('generateBtn'),
+      clearBtn: document.getElementById('clearBtn'),
+      previewSection: document.getElementById('previewSection'),
+      previewViewport: document.getElementById('previewViewport'),
+      previewPage: document.getElementById('previewPage'),
+      printPage: document.getElementById('printPage'),
+      // campos da prévia
+      p_para1: document.getElementById('p_para1'),
+      p_para2: document.getElementById('p_para2'),
+      p_vehicleInfo: document.getElementById('p_vehicleInfo'),
+      p_cityDate: document.getElementById('p_cityDate'),
+      // campos do print
+      pp_para1: document.getElementById('pp_para1'),
+      pp_para2: document.getElementById('pp_para2'),
+      pp_vehicleInfo: document.getElementById('pp_vehicleInfo'),
+      pp_cityDate: document.getElementById('pp_cityDate'),
+    };
+
+    let currentData = null;
+    let pdfFilename = 'procuracao.pdf';
+
+    // ====== Extração de dados do PDF ======
     function extractFields(text) {
-        const lines = text.split(/\n+/).map(l => l.trim()).filter(l => l);
-        let name = '', address = '', bairro = '', cep = '', city = '', state = '', cnpj = '', model = '', plate = '', ano = '', chassis = '', renavam = '', color = '';
-        const cpfCnpjMatch = text.match(/CPF\/CNPJ\s*:\s*([\d\.\/\-]+)/i);
-        if (cpfCnpjMatch) {
-            cnpj = cpfCnpjMatch[1];
-        } else {
-            const cnpjPattern = /\d{2}\.\d{3}\.\d{3}\/\d{4}\-\d{2}/g;
-            const cnpjList = text.match(cnpjPattern);
-            if (cnpjList && cnpjList.length) {
-                cnpj = cnpjList[cnpjList.length - 1];
+      const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
+      let name='', address='', bairro='', cep='', city='', state='', cnpj='',
+          model='', plate='', ano='', chassis='', renavam='', color='';
+
+      const cpfCnpjMatch = text.match(/CPF\/CNPJ\s*:\s*([\d\.\/\-]+)/i);
+      if (cpfCnpjMatch) cnpj = cpfCnpjMatch[1];
+      else {
+        const cnpjPattern = /\d{2}\.\d{3}\.\d{3}\/\d{4}\-\d{2}/g;
+        const cnpjList = text.match(cnpjPattern);
+        if (cnpjList && cnpjList.length) cnpj = cnpjList[cnpjList.length - 1];
+      }
+
+      const nameMatch = text.match(/Cliente\s*:\s*([^\n,]+)/i);
+      if (nameMatch) { let nm = nameMatch[1]; nm = nm.split(/CPF|CNPJ|Cadastro/i)[0]; name = nm.trim(); }
+
+      const enderecoMatch = text.match(/Endere[cç]o\s*:\s*([^\n,]+)/i);
+      if (enderecoMatch) address = enderecoMatch[1].trim();
+      else if (lines.length) {
+        const nameLineIndex = lines.findIndex(l => /Cliente\s*:/i.test(l));
+        if (nameLineIndex !== -1) {
+          for (let j = nameLineIndex + 1; j < Math.min(nameLineIndex + 6, lines.length); j++) {
+            const l = lines[j];
+            if (/Bairro\s*:/i.test(l) || /Proposta|Forma|Fones/i.test(l)) break;
+            if (/[0-9]/.test(l) || /(RUA|AV|AV\.|ALAMEDA|TRAV|ROD|ESTR)/i.test(l)) {
+              let addr = l.split(/I\.E\.|CNPJ:|CPF:|Bairro:/i)[0].trim();
+              if (addr) { address = addr; break; }
             }
+          }
         }
-        const nameMatch = text.match(/Cliente\s*:\s*([^\n,]+)/i);
-        if (nameMatch) {
-            let nm = nameMatch[1];
-            nm = nm.split(/CPF|CNPJ|Cadastro/i)[0];
-            name = nm.trim();
+      }
+
+      if (lines.length) {
+        const clientIdx = lines.findIndex(l => /Cliente\s*:/i.test(l));
+        if (clientIdx !== -1) {
+          for (let j = clientIdx; j < Math.min(clientIdx + 10, lines.length); j++) {
+            const bm = lines[j].match(/Bairro\s*:\s*([^\n,]+)/i);
+            if (bm) { bairro = bm[1].trim(); break; }
+          }
+          for (let j = clientIdx; j < Math.min(clientIdx + 10, lines.length); j++) {
+            const cm = lines[j].match(/CEP\s*:\s*([\d\-]+)/i);
+            if (cm) { cep = cm[1]; break; }
+          }
         }
-        const enderecoMatch = text.match(/Endere[cç]o\s*:\s*([^\n,]+)/i);
-        if (enderecoMatch) {
-            address = enderecoMatch[1].trim();
-        } else {
-            if (lines.length) {
-                const nameLineIndex = lines.findIndex(l => /Cliente\s*:/i.test(l));
-                if (nameLineIndex !== -1) {
-                    for (let j = nameLineIndex + 1; j < Math.min(nameLineIndex + 6, lines.length); j++) {
-                        const l = lines[j];
-                        if (/Bairro\s*:/i.test(l) || /Proposta|Forma|Fones/i.test(l)) break;
-                        if (/[0-9]/.test(l) || /(RUA|AV|AV\.|ALAMEDA|TRAV|ROD|ESTR)/i.test(l)) {
-                            let addr = l.split(/I\.E\.|CNPJ:|CPF:|Bairro:/i)[0].trim();
-                            if (addr) {
-                                address = addr;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if (lines.length) {
-            const clientIdx = lines.findIndex(l => /Cliente\s*:/i.test(l));
-            if (clientIdx !== -1) {
-                for (let j = clientIdx; j < Math.min(clientIdx + 10, lines.length); j++) {
-                    const l = lines[j];
-                    const bm = l.match(/Bairro\s*:\s*([^\n,]+)/i);
-                    if (bm) {
-                        bairro = bm[1].trim();
-                        break;
-                    }
-                }
-                for (let j = clientIdx; j < Math.min(clientIdx + 10, lines.length); j++) {
-                    const l = lines[j];
-                    const cm = l.match(/CEP\s*:\s*([\d\-]+)/i);
-                    if (cm) {
-                        cep = cm[1];
-                        break;
-                    }
-                }
-            }
-        }
-        if (!bairro) {
-            const bairroMatches = [...text.matchAll(/Bairro\s*:\s*([^\n,]+)/gi)];
-            if (bairroMatches.length) {
-                bairro = bairroMatches[bairroMatches.length - 1][1].trim();
-            }
-        }
-        if (!cep) {
-            const cepMatches = [...text.matchAll(/CEP\s*:\s*([\d\-]+)/gi)];
-            if (cepMatches.length) {
-                cep = cepMatches[cepMatches.length - 1][1];
-            }
-        }
-        if (bairro) {
-            const bIndex = lines.findIndex(l => /Bairro\s*:/i.test(l));
-            if (bIndex !== -1) {
-                for (let k = bIndex; k < Math.min(bIndex + 4, lines.length); k++) {
-                    const l = lines[k];
-                    const csMatch = l.match(/([^\-]+)\s*-\s*[^\-]+\s*-\s*([A-Z]{2})/i);
-                    if (csMatch) {
-                        city = csMatch[1].trim();
-                        state = csMatch[2].trim();
-                        break;
-                    }
-                }
-            }
-        }
-        if (!city || !state) {
-            let subtext = text;
-            const clientPos = text.toLowerCase().indexOf('cliente');
-            if (clientPos !== -1) {
-                subtext = text.substring(clientPos);
-            }
-            const cityStateMatch = subtext.match(/([^\-\n]+)\s*-\s*[^\-\n]+\s*-\s*([A-Z]{2})/i);
-            if (cityStateMatch) {
-                city = cityStateMatch[1].trim();
-                state = cityStateMatch[2].trim();
-            }
-        }
-        const modelMatch = text.match(/Ve[ií]culo\s*:\s*([^\n]+?)(?=\s+Placa|\s+Chassi|\n)/i);
-        if (modelMatch) {
-            model = modelMatch[1].trim();
-        }
-        let plateCandidate = '';
-        const placaIndex = text.search(/Placa/i);
-        if (placaIndex >= 0) {
-            const start = Math.max(0, placaIndex - 25);
-            const beforeSegment = text.substring(start, placaIndex);
-            const beforeMatch = beforeSegment.match(/([A-Z]{3}[A-Z0-9\-]{4,5})\s*$/i);
-            if (beforeMatch) {
-                let raw = beforeMatch[1].replace(/\s+/g, '').toUpperCase();
-                if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) {
-                    plateCandidate = raw.slice(0, 3) + '-' + raw.slice(3);
-                } else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(raw)) {
-                    plateCandidate = raw;
-                } else {
-                    plateCandidate = raw;
-                }
-            }
-            if (!plateCandidate) {
-                const afterSegment = text.substring(placaIndex);
-                const afterMatch = afterSegment.match(/Placa\s*:\s*([A-Z0-9\-]{3,8})/i);
-                if (afterMatch) {
-                    let raw = afterMatch[1].trim().replace(/\s+/g, '').toUpperCase();
-                    if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) {
-                        plateCandidate = raw.slice(0, 3) + '-' + raw.slice(3);
-                    } else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(raw)) {
-                        plateCandidate = raw;
-                    } else {
-                        plateCandidate = raw;
-                    }
-                }
-            }
+      }
+      if (!bairro) {
+        const bairroMatches = [...text.matchAll(/Bairro\s*:\s*([^\n,]+)/gi)];
+        if (bairroMatches.length) bairro = bairroMatches[bairroMatches.length - 1][1].trim();
+      }
+      if (!cep) {
+        const cepMatches = [...text.matchAll(/CEP\s*:\s*([\d\-]+)/gi)];
+        if (cepMatches.length) cep = cepMatches[cepMatches.length - 1][1];
+      }
+
+      if (!city || !state) {
+        let subtext = text;
+        const clientPos = text.toLowerCase().indexOf('cliente');
+        if (clientPos !== -1) subtext = text.substring(clientPos);
+        const cityStateMatch = subtext.match(/([^\-\n]+)\s*-\s*[^\-\n]+\s*-\s*([A-Z]{2})/i);
+        if (cityStateMatch) { city = cityStateMatch[1].trim(); state = cityStateMatch[2].trim(); }
+      }
+
+      const modelMatch = text.match(/Ve[ií]culo\s*:\s*([^\n]+?)(?=\s+Placa|\s+Chassi|\n)/i);
+      if (modelMatch) model = modelMatch[1].trim();
+
+      // Placa (antes/depois do rótulo)
+      let plateCandidate = '';
+      const placaIndex = text.search(/Placa/i);
+      if (placaIndex >= 0) {
+        const start = Math.max(0, placaIndex - 25);
+        const beforeSegment = text.substring(start, placaIndex);
+        const beforeMatch = beforeSegment.match(/([A-Z]{3}[A-Z0-9\-]{4,5})\s*$/i);
+        if (beforeMatch) {
+          let raw = beforeMatch[1].replace(/\s+/g,'').toUpperCase();
+          if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) plateCandidate = raw.slice(0,3)+'-'+raw.slice(3);
+          else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(raw)) plateCandidate = raw;
+          else plateCandidate = raw;
         }
         if (!plateCandidate) {
-            const placaLabelRegex = /Placa\s*:\s*([A-Z0-9\-]+)/i;
-            const placaMatch = text.match(placaLabelRegex);
-            if (placaMatch) {
-                let raw = placaMatch[1].trim().replace(/\s+/g, '').toUpperCase();
-                if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) {
-                    plateCandidate = raw.slice(0, 3) + '-' + raw.slice(3);
-                } else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(raw)) {
-                    plateCandidate = raw;
-                } else {
-                    plateCandidate = raw;
-                }
-            }
+          const afterSegment = text.substring(placaIndex);
+          const afterMatch = afterSegment.match(/Placa\s*:\s*([A-Z0-9\-]{3,8})/i);
+          if (afterMatch) {
+            let raw = afterMatch[1].trim().replace(/\s+/g,'').toUpperCase();
+            if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) plateCandidate = raw.slice(0,3)+'-'+raw.slice(3);
+            else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(raw)) plateCandidate = raw;
+            else plateCandidate = raw;
+          }
         }
-        if (!plateCandidate) {
-            const platePatternGlobal = /([A-Z]{3}\-?[0-9][A-Z][0-9]{2})/gi;
-            const plateList = text.match(platePatternGlobal);
-            if (plateList && plateList.length) {
-                let candidate = plateList[0];
-                let normalized = candidate.replace(/\s|-/g, '').toUpperCase();
-                if (/^[A-Z]{3}[0-9]{4}$/.test(normalized)) {
-                    plateCandidate = normalized.slice(0, 3) + '-' + normalized.slice(3);
-                } else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(normalized)) {
-                    plateCandidate = normalized;
-                } else {
-                    plateCandidate = normalized;
-                }
-            }
+      }
+      if (!plateCandidate) {
+        const placaMatch = text.match(/Placa\s*:\s*([A-Z0-9\-]+)/i);
+        if (placaMatch) {
+          let raw = placaMatch[1].trim().replace(/\s+/g,'').toUpperCase();
+          if (/^[A-Z]{3}[0-9]{4}$/.test(raw)) plateCandidate = raw.slice(0,3)+'-'+raw.slice(3);
+          else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(raw)) plateCandidate = raw;
+          else plateCandidate = raw;
         }
-        plate = plateCandidate;
-        let anoMatch = text.match(/Ano\s*\/\s*Modelo[^0-9]*([0-9]{2}\/[0-9]{2}|[0-9]{4}\/[0-9]{4})/i);
-        if (!anoMatch) {
-            const genericYear = text.match(/\b([1-2][0-9]\/[1-2][0-9])\b/);
-            if (genericYear) {
-                anoMatch = [null, genericYear[1]];
-            }
+      }
+      if (!plateCandidate) {
+        const platePatternGlobal = /([A-Z]{3}\-?[0-9][A-Z][0-9]{2})/gi;
+        const plateList = text.match(platePatternGlobal);
+        if (plateList && plateList.length) {
+          let candidate = plateList[0].replace(/\s|-/g,'').toUpperCase();
+          if (/^[A-Z]{3}[0-9]{4}$/.test(candidate)) plate = candidate.slice(0,3)+'-'+candidate.slice(3);
+          else if (/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(candidate)) plate = candidate;
+          else plate = candidate;
         }
-        if (anoMatch) {
-            ano = anoMatch[1];
-            if (/^[0-9]{2}\/[0-9]{2}$/.test(ano)) {
-                const parts = ano.split('/');
-                ano = '20' + parts[0] + '/20' + parts[1];
-            }
-        }
-        const chassiMatch = text.match(/Chassi\s*:?\s*([A-Za-z0-9]+)/i);
-        if (chassiMatch) {
-            chassis = chassiMatch[1];
-        }
-        const renMatch = text.match(/Renavam\s*:?\s*(\d+)/i);
-        if (renMatch) {
-            renavam = renMatch[1];
-        }
-        const colorMatch = text.match(/Cor\s*:\s*([^/\n]+)/i);
-        if (colorMatch) {
-            color = colorMatch[1].split('/')[0].trim();
-        }
-        return { name, cnpj, address, bairro, cep, city, state, model, plate, ano, chassis, renavam, color };
+      }
+      if (!plate && plateCandidate) plate = plateCandidate;
+
+      let anoMatch = text.match(/Ano\s*\/\s*Modelo[^0-9]*([0-9]{2}\/[0-9]{2}|[0-9]{4}\/[0-9]{4})/i);
+      if (!anoMatch) {
+        const genericYear = text.match(/\b([1-2][0-9]\/[1-2][0-9])\b/);
+        if (genericYear) anoMatch = [null, genericYear[1]];
+      }
+      if (anoMatch) {
+        let anoVal = anoMatch[1];
+        if (/^[0-9]{2}\/[0-9]{2}$/.test(anoVal)) { const p = anoVal.split('/'); ano = '20'+p[0]+'/20'+p[1]; }
+        else ano = anoVal;
+      }
+
+      const chassiMatch = text.match(/Chassi\s*:?\s*([A-Za-z0-9]+)/i);
+      if (chassiMatch) chassis = chassiMatch[1];
+
+      const renMatch = text.match(/Renavam\s*:?\s*(\d+)/i);
+      if (renMatch) renavam = renMatch[1];
+
+      const colorMatch = text.match(/Cor\s*:\s*([^/\n]+)/i);
+      if (colorMatch) color = colorMatch[1].split('/')[0].trim();
+
+      return { name, cnpj, address, bairro, cep, city, state, model, plate, ano, chassis, renavam, color };
     }
 
-    // Elementos DOM
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('fileInput');
-    const generateBtn = document.getElementById('generateBtn');
-    const clearBtn = document.getElementById('clearBtn');
-    const statusMessage = document.getElementById('statusMessage');
-    const previewSection = document.getElementById('previewSection');
+    // ====== Preenche nós (prévia e impressão) ======
+    function fillPreview(data){
+      els.p_para1.innerHTML =
+        `Por este instrumento particular de procuração, <b>${data.name || ''}</b>, CPF/CNPJ: <b>${data.cnpj || ''}</b>, ` +
+        `ENDEREÇO: <b>${data.address || ''}</b>, BAIRRO: <b>${data.bairro || ''}</b>, CEP: <b>${data.cep || ''}</b>, ` +
+        `CIDADE: <b>${data.city || ''}</b>, ESTADO: <b>${data.state || ''}</b>.`;
 
-    // Função para mostrar mensagens de status
-    function showStatus(message, color = '#10b981') {
-        statusMessage.style.display = 'block';
-        statusMessage.textContent = message;
-        statusMessage.style.color = color;
-        setTimeout(() => {
-            statusMessage.style.display = 'none';
-        }, 3000);
+      els.p_para2.innerHTML =
+        'Dados pelos quais responsabilizo-me civil e criminalmente, nomeio e constituo meu bastante procurador: ' +
+        'RAMIRO ILHA, portador do CPF: 375.722.450-72 e RG: 9021949971, domiciliado na Rua Dr. Voltaire Pires, Nº 430, ' +
+        'na cidade de Porto Alegre/RS, para os fins específicos de assinar a GRT, Guia de Responsabilidade Técnica, e também o ' +
+        '"DE ACORDO" na compra do veículo descrito abaixo:';
+
+      els.p_vehicleInfo.innerHTML =
+        `MODELO DO VEÍCULO: <b>${data.model || ''}</b><br>` +
+        `PLACA: <b>${data.plate || ''}</b><br>` +
+        `ANO/MODELO: <b>${data.ano || ''}</b><br>` +
+        `CHASSI: <b>${data.chassis || ''}</b><br>` +
+        `RENAVAM: <b>${data.renavam || ''}</b><br>` +
+        `COR: <b>${data.color || ''}</b>`;
+
+      els.p_cityDate.innerText = 'CIDADE: ________________, ESTADO: ___, ____ de _______________ de ____.';
     }
 
-    // Função para limpar o formulário e a pré-visualização
-    function clearForm() {
-        fileInput.value = '';
-        generateBtn.disabled = true;
-        clearBtn.disabled = true;
-        previewSection.style.display = 'none';
-        document.getElementById('para1').innerHTML = '';
-        document.getElementById('para2').innerHTML = '';
-        document.getElementById('vehicleInfo').innerHTML = '';
-        document.getElementById('cityDate').innerHTML = '';
-        showStatus('Formulário limpo!', '#6b7280');
+    function fillPrint(data){
+      els.pp_para1.innerHTML =
+        `Por este instrumento particular de procuração, <b>${data.name || ''}</b>, CPF/CNPJ: <b>${data.cnpj || ''}</b>, ` +
+        `ENDEREÇO: <b>${data.address || ''}</b>, BAIRRO: <b>${data.bairro || ''}</b>, CEP: <b>${data.cep || ''}</b>, ` +
+        `CIDADE: <b>${data.city || ''}</b>, ESTADO: <b>${data.state || ''}</b>.`;
+
+      els.pp_para2.innerHTML =
+        'Dados pelos quais responsabilizo-me civil e criminalmente, nomeio e constituo meu bastante procurador: ' +
+        'RAMIRO ILHA, portador do CPF: 375.722.450-72 e RG: 9021949971, domiciliado na Rua Dr. Voltaire Pires, Nº 430, ' +
+        'na cidade de Porto Alegre/RS, para os fins específicos de assinar a GRT, Guia de Responsabilidade Técnica, e também o ' +
+        '"DE ACORDO" na compra do veículo descrito abaixo:';
+
+      els.pp_vehicleInfo.innerHTML =
+        `MODELO DO VEÍCULO: <b>${data.model || ''}</b><br>` +
+        `PLACA: <b>${data.plate || ''}</b><br>` +
+        `ANO/MODELO: <b>${data.ano || ''}</b><br>` +
+        `CHASSI: <b>${data.chassis || ''}</b><br>` +
+        `RENAVAM: <b>${data.renavam || ''}</b><br>` +
+        `COR: <b>${data.color || ''}</b>`;
+
+      els.pp_cityDate.innerText = 'CIDADE: ________________, ESTADO: ___, ____ de _______________ de ____.';
     }
 
-    // Eventos de Drag-and-Drop
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('dragover');
-    });
+    // ====== Autoscale para caber em 1 página A4 ======
+    function autoscaleToA4(node){
+      node.style.transform = 'scale(1)';
+      const contentH = node.scrollHeight;
+      if (contentH <= A4_H) return 1;
+      const scale = A4_H / contentH;
+      node.style.transformOrigin = 'top left';
+      node.style.transform = `scale(${scale})`;
+      return scale;
+    }
 
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('dragover');
-    });
+    function fitPreviewViewport(){
+      const vp = els.previewViewport;
+      const availableW = vp.parentElement.clientWidth - 10;
+      const scale = Math.min(availableW / A4_W, 1);
+      vp.style.transform = `scale(${scale})`;
+      vp.style.width = (A4_W * scale) + 'px';
+      vp.style.height = (A4_H * scale) + 'px';
+    }
 
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
-        const file = e.dataTransfer.files[0];
-        if (file && file.type === 'application/pdf') {
-            fileInput.files = e.dataTransfer.files;
-            showStatus('Arquivo PDF carregado com sucesso!');
-            processFile(file);
-        } else {
-            showStatus('Por favor, arraste um arquivo PDF válido.', '#ef4444');
-        }
-    });
+    // ====== PDF (1ª página, sem páginas extras) ======
+    async function generatePDF(){
+      if (!currentData) return;
 
-    // Clique na drop zone para abrir o seletor de arquivos
-    dropZone.addEventListener('click', () => {
-        fileInput.click();
-    });
+      fillPrint(currentData);
+      autoscaleToA4(els.printPage);
 
-    // Processa arquivo PDF selecionado ou arrastado
-    function processFile(file) {
-        const reader = new FileReader();
-        reader.onload = function() {
-            const typedarray = new Uint8Array(this.result);
-            pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
-                pdf.getPage(1).then(function(page) {
-                    page.getTextContent().then(function(content) {
-                        const strings = content.items.map(item => item.str).join('\n');
-                        const data = extractFields(strings);
-                        // Monta os parágrafos com os dados extraídos
-                        document.getElementById('para1').innerHTML =
-                            `Por este instrumento particular de procuração, <b>${data.name || ''}</b>, CPF/CNPJ: <b>${data.cnpj || ''}</b>, ENDEREÇO: <b>${data.address || ''}</b>, BAIRRO: <b>${data.bairro || ''}</b>, CEP: <b>${data.cep || ''}</b>, CIDADE: <b>${data.city || ''}</b>, ESTADO: <b>${data.state || ''}</b>.`;
-                        document.getElementById('para2').innerHTML =
-                            'Dados pelos quais responsabilizo-me civil e criminalmente, nomeio e constituo meu bastante procurador: RAMIRO ILHA, portador do CPF: 375.722.450-72 e RG: 9021949971, domiciliado na Rua Dr. Voltaire Pires, Nº 430, na cidade de Porto Alegre/RS, para os fins específicos de assinar a GRT, Guia de Responsabilidade Técnica, e também o "DE ACORDO" na compra do veículo descrito abaixo:';
-                        document.getElementById('vehicleInfo').innerHTML =
-                            `MODELO DO VEÍCULO: <b>${data.model || ''}</b><br>` +
-                            `PLACA: <b>${data.plate || ''}</b><br>` +
-                            `ANO/MODELO: <b>${data.ano || ''}</b><br>` +
-                            `CHASSI: <b>${data.chassis || ''}</b><br>` +
-                            `RENAVAM: <b>${data.renavam || ''}</b><br>` +
-                            `COR: <b>${data.color || ''}</b>`;
-                        document.getElementById('cityDate').innerHTML =
-                            'CIDADE: ________________, ESTADO: ___, ____ de _______________ de ____.';
-                        // Exibe a seção de pré-visualização
-                        previewSection.style.display = 'block';
-                        // Define nome do arquivo de saída
-                        const sanitizedPlate = data.plate ? data.plate.replace(/[^A-Za-z0-9]/g, '') : 'PLACADESCONHECIDA';
-                        const sanitizedName = data.name ? data.name.replace(/\s+/g, '_') : 'CLIENTE';
-                        generateBtn.dataset.filename = `PROCURACAO_${sanitizedPlate}_${sanitizedName}.pdf`;
-                        generateBtn.disabled = false;
-                        clearBtn.disabled = false;
-                        showStatus('Dados extraídos! Revise a procuração abaixo.');
-                    });
-                });
+      const canvas = await html2canvas(els.printPage, {
+        scale: 2,
+        backgroundColor: '#FFFFFF',
+        useCORS: true,
+        logging: false
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ unit:'px', format:[A4_W, A4_H], orientation:'portrait' });
+      pdf.addImage(imgData, 'JPEG', 0, 0, A4_W, A4_H);
+      pdf.save(pdfFilename);
+    }
+
+    // ====== Leitura do contrato ======
+    function handlePDFFile(file){
+      if (!file || file.type !== 'application/pdf') return;
+      const reader = new FileReader();
+      reader.onload = function(){
+        const typedarray = new Uint8Array(this.result);
+        pdfjsLib.getDocument(typedarray).promise.then(function(pdf){
+          pdf.getPage(1).then(function(page){
+            page.getTextContent().then(function(content){
+              const text = content.items.map(i => i.str).join('\n');
+              currentData = extractFields(text);
+
+              const sanitizedPlate = currentData.plate ? currentData.plate.replace(/[^A-Za-z0-9]/g,'') : 'PLACADESCONHECIDA';
+              const sanitizedName  = currentData.name ? currentData.name.replace(/\s+/g,'_') : 'CLIENTE';
+              pdfFilename = `PROCURACAO_${sanitizedPlate}_${sanitizedName}.pdf`;
+
+              fillPreview(currentData);
+              fillPrint(currentData);
+
+              autoscaleToA4(els.previewPage);
+              autoscaleToA4(els.printPage);
+
+              els.previewSection.style.display = 'block';
+              fitPreviewViewport();
+
+              els.generateBtn.disabled = false;
+              els.clearBtn.disabled = false;
             });
-        };
-        reader.readAsArrayBuffer(file);
+          });
+        });
+      };
+      reader.readAsArrayBuffer(file);
     }
 
-    // Evento de mudança no input de arquivo
-    fileInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (file && file.type === 'application/pdf') {
-            showStatus('Arquivo PDF selecionado com sucesso!');
-            processFile(file);
-        } else {
-            showStatus('Por favor, selecione um arquivo PDF válido.', '#ef4444');
-        }
+    // ====== Eventos ======
+    els.fileInput.addEventListener('change', (e)=>{
+      const f = e.target.files[0]; handlePDFFile(f);
+    });
+    els.dropArea.addEventListener('dragover', (e)=>{ e.preventDefault(); els.dropArea.classList.add('dragover'); });
+    els.dropArea.addEventListener('dragleave', ()=> els.dropArea.classList.remove('dragover'));
+    els.dropArea.addEventListener('drop', (e)=>{
+      e.preventDefault(); els.dropArea.classList.remove('dragover');
+      const f = e.dataTransfer.files[0]; handlePDFFile(f);
     });
 
-    // Gera o PDF a partir do template
-    generateBtn.addEventListener('click', function() {
-        const element = document.getElementById('procuraTemplate');
-        const filename = this.dataset.filename || 'procuracao.pdf';
-        const opt = {
-            margin: 20,
-            filename: filename,
-            html2canvas: { scale: 2 },
-            jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
-        };
-        html2pdf().set(opt).from(element).save().then(() => {
-            showStatus('PDF gerado e baixado com sucesso!');
-        });
+    els.generateBtn.addEventListener('click', generatePDF);
+    els.clearBtn.addEventListener('click', ()=>{
+      els.fileInput.value = '';
+      els.generateBtn.disabled = true;
+      els.clearBtn.disabled = true;
+      els.previewSection.style.display = 'none';
+      currentData = null;
+      pdfFilename = 'procuracao.pdf';
+      els.p_para1.innerHTML = els.p_para2.innerHTML = els.p_vehicleInfo.innerHTML = '';
+      els.p_cityDate.innerHTML = '';
+      els.pp_para1.innerHTML = els.pp_para2.innerHTML = els.pp_vehicleInfo.innerHTML = '';
+      els.pp_cityDate.innerHTML = '';
     });
 
-    // Limpa o formulário
-    clearBtn.addEventListener('click', clearForm);
-    </script>
+    window.addEventListener('resize', ()=> {
+      if (els.previewSection.style.display === 'block') fitPreviewViewport();
+    });
+  </script>
 </body>
 </html>
