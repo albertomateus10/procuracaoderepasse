@@ -201,31 +201,26 @@
       if (!l) return false;
       const hasStreetWord = /(RUA|R\.|AVENIDA|AV\.?|ALAMEDA|AL\.|TRAVESSA|TRAV\.|RODOVIA|ROD\.|ESTRADA|ESTR\.|PRAÇA|PRACA|CONDOMÍNIO|COND\.|LOTEAMENTO|LOT\.)/i.test(l);
       const hasNumber = /(^|,|\s)\d{1,5}(\s|$|,)/.test(l) || /\bN[º°o]?\b/i.test(l);
-      // aceita também padrões "RUA XXX, 123 AP 301" etc.
       return hasStreetWord || (/[A-ZÁ-Ú]{3,}/i.test(l) && hasNumber);
     };
 
-    // Limpa caudas e remove trechos de documentos dentro da linha
     function cleanAddress(s){
       if (!s) return '';
-      s = s.replace(/(?:C\.?P\.?F\.?|CPF|CNPJ|R\.?G\.?|RG|I\.?E\.?|IE)\s*:\s*[\w\.\-\/]+/gi, ''); // remove C.P.F.: xxx etc
+      s = s.replace(/(?:C\.?P\.?F\.?|CPF|CNPJ|R\.?G\.?|RG|I\.?E\.?|IE)\s*:\s*[\w\.\-\/]+/gi, '');
       s = s.split(/,(?=\s*(Bairro|CEP|Cidade|Estado)\s*:)/i)[0];
       s = s.split(/\b(Bairro|CEP|Cidade|Estado)\s*:/i)[0];
       return s.replace(/\s{2,}/g,' ').replace(/^[,\.;\-\s]+|[,\.;\-\s]+$/g,'').trim();
     }
 
-    // Coleta 1–2 linhas de endereço a partir de um índice
     function collectAddressFrom(lines, startIdx){
       let out = cleanAddress(lines[startIdx]);
       let used = 1;
 
-      // Se a primeira linha for muito curta (ex.: só o nome da via), tenta anexar a próxima
       for (let k = 1; k <= 2 && startIdx + k < lines.length; k++){
         const nxt = lines[startIdx + k];
         if (!nxt || isStopLabel(nxt)) break;
         const cleaned = cleanAddress(nxt);
         if (!cleaned) continue;
-        // concatena se ainda parecer parte do logradouro (número/complemento)
         if (looksLikeStreet(cleaned) || /,\s*\d+|APT|AP\.?|BL\.?|QD\.?|LT\.?/i.test(cleaned)) {
           out = (out ? (out + ' ' + cleaned) : cleaned).trim();
           used++;
@@ -243,8 +238,7 @@
       let name='', address='', bairro='', cep='', city='', state='', cnpj='',
           model='', plate='', ano='', chassis='', renavam='', color='';
 
-      // --------- CPF/CNPJ (mantido com validação de tamanho e evitando telefone) ---------
-      // CNPJ rotulado > CPF rotulado > "CPF/CNPJ:" > CNPJ solto
+      // --------- CPF/CNPJ ----------
       const findLabeledCNPJ = () => {
         for (const l of lines) {
           if (isPhoneLine(l)) continue;
@@ -299,13 +293,10 @@
         name = nm.trim();
       }
 
-      // --------- ENDEREÇO (CPF e CNPJ) — reforçado p/ CPF ---------
-      // 1) Tenta rótulo "Endereço:"
+      // --------- ENDEREÇO ---------
       const enderecoLabelIdx = lines.findIndex(l => /Endere[cç]o\s*:/i.test(l));
       if (enderecoLabelIdx !== -1) {
-        // pega da própria linha do rótulo…
         let candidate = cleanAddress(lines[enderecoLabelIdx].replace(/^.*Endere[cç]o\s*:\s*/i, ''));
-        // …se vazio/curto, tenta coletar nas 2 próximas linhas (ignorando rótulos/telefone)
         if (!candidate || candidate.length < 6) {
           for (let k = 1; k <= 2 && enderecoLabelIdx + k < lines.length; k++) {
             const nxt = lines[enderecoLabelIdx + k];
@@ -318,19 +309,13 @@
         }
         address = (candidate || '').trim();
       }
-
-      // 2) Se ainda não achou, após "Cliente:" procurar primeira linha que pareça logradouro,
-      //    pulando linhas de CPF/CNPJ/RG/Telefone; depois concatenar 1 próxima se fizer sentido.
       if (!address) {
         const clientIdx = lines.findIndex(l => /Cliente\s*:/i.test(l));
         if (clientIdx !== -1) {
           for (let j = clientIdx + 1; j < Math.min(clientIdx + 12, lines.length); j++) {
             const l = lines[j];
             if (!l) continue;
-            if (isStopLabel(l)) {
-              // se a linha é só rótulo (ex.: "C.P.F.: ..."), pula e continua procurando logradouro
-              continue;
-            }
+            if (isStopLabel(l)) continue;
             const cleaned = cleanAddress(l);
             if (looksLikeStreet(cleaned)) {
               address = collectAddressFrom(lines.map(cleanAddress), j);
@@ -339,8 +324,6 @@
           }
         }
       }
-
-      // 3) Fallback final: se ainda vazio e havia linha com CPF que também tinha logradouro após vírgula/hífen
       if (!address) {
         const cpfLineIdx = lines.findIndex(l => /(?:C\.?P\.?F\.?|CPF)\s*:/i.test(l));
         if (cpfLineIdx !== -1) {
@@ -348,7 +331,6 @@
           tail = cleanAddress(tail);
           if (looksLikeStreet(tail)) {
             address = tail;
-            // tenta anexar próxima linha se parecer complemento
             if (cpfLineIdx + 1 < lines.length && !isStopLabel(lines[cpfLineIdx + 1])) {
               const nextClean = cleanAddress(lines[cpfLineIdx + 1]);
               if (nextClean && (looksLikeStreet(nextClean) || /,\s*\d+|APT|AP\.?|BL\.?|QD\.?|LT\.?/i.test(nextClean))) {
@@ -375,7 +357,7 @@
         if (m) { city = m[1].trim(); state = m[2].trim(); }
       }
 
-      // --------- Veículo (mantido) ---------
+      // --------- Veículo ---------
       const modelMatch = text.match(/Ve[ií]culo\s*:\s*([^\n]+?)(?=\s+Placa|\s+Chassi|\n)/i);
       if (modelMatch) model = modelMatch[1].trim();
 
@@ -527,36 +509,45 @@
       pdf.save(pdfFilename);
     }
 
-    // ====== Leitura do contrato ======
+    // ====== Leitura do contrato (ATUALIZADO: todas as páginas) ======
+    async function extractAllPagesText(pdf) {
+      const pages = [];
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        const text = content.items.map(i => i.str).join('\n');
+        pages.push(text);
+      }
+      return pages.join('\n');
+    }
+
     function handlePDFFile(file){
       if (!file || file.type !== 'application/pdf') return;
       const reader = new FileReader();
-      reader.onload = function(){
+      reader.onload = async function(){
         const typedarray = new Uint8Array(this.result);
-        pdfjsLib.getDocument(typedarray).promise.then(function(pdf){
-          pdf.getPage(1).then(function(page){
-            page.getTextContent().then(function(content){
-              const text = content.items.map(i => i.str).join('\n');
-              currentData = extractFields(text);
+        const doc = await pdfjsLib.getDocument(typedarray).promise;
 
-              const sanitizedPlate = currentData.plate ? currentData.plate.replace(/[^A-Za-z0-9]/g,'') : 'PLACADESCONHECIDA';
-              const sanitizedName  = currentData.name ? currentData.name.replace(/\s+/g,'_') : 'CLIENTE';
-              pdfFilename = `PROCURACAO_${sanitizedPlate}_${sanitizedName}.pdf`;
+        // >>> ALTERAÇÃO ÚNICA: concatenar o texto de TODAS AS PÁGINAS
+        const fullText = await extractAllPagesText(doc);
 
-              fillPreview(currentData);
-              fillPrint(currentData);
+        currentData = extractFields(fullText);
 
-              autoscaleToA4(els.previewPage);
-              autoscaleToA4(els.printPage);
+        const sanitizedPlate = currentData.plate ? currentData.plate.replace(/[^A-Za-z0-9]/g,'') : 'PLACADESCONHECIDA';
+        const sanitizedName  = currentData.name ? currentData.name.replace(/\s+/g,'_') : 'CLIENTE';
+        pdfFilename = `PROCURACAO_${sanitizedPlate}_${sanitizedName}.pdf`;
 
-              els.previewSection.style.display = 'block';
-              fitPreviewViewport();
+        fillPreview(currentData);
+        fillPrint(currentData);
 
-              els.generateBtn.disabled = false;
-              els.clearBtn.disabled = false;
-            });
-          });
-        });
+        autoscaleToA4(els.previewPage);
+        autoscaleToA4(els.printPage);
+
+        els.previewSection.style.display = 'block';
+        fitPreviewViewport();
+
+        els.generateBtn.disabled = false;
+        els.clearBtn.disabled = false;
       };
       reader.readAsArrayBuffer(file);
     }
