@@ -214,8 +214,6 @@
 
     function collectAddressFrom(lines, startIdx){
       let out = cleanAddress(lines[startIdx]);
-      let used = 1;
-
       for (let k = 1; k <= 2 && startIdx + k < lines.length; k++){
         const nxt = lines[startIdx + k];
         if (!nxt || isStopLabel(nxt)) break;
@@ -223,7 +221,6 @@
         if (!cleaned) continue;
         if (looksLikeStreet(cleaned) || /,\s*\d+|APT|AP\.?|BL\.?|QD\.?|LT\.?/i.test(cleaned)) {
           out = (out ? (out + ' ' + cleaned) : cleaned).trim();
-          used++;
         } else {
           break;
         }
@@ -341,20 +338,37 @@
         }
       }
 
-      // --------- Bairro / CEP ---------
-      const bairroMatchGlobal = [...text.matchAll(/Bairro\s*:\s*([^\n,]+)/gi)];
-      if (bairroMatchGlobal.length) bairro = bairroMatchGlobal[bairroMatchGlobal.length - 1][1].trim();
+      // --------- BAIRRO ---------
+      const bairroMatches = [...text.matchAll(/Bairro\s*:\s*([^\n,]+)/gi)]
+        .map(m => (m[1] || '').trim())
+        .filter(val => val && !/^CEP\s*:?/i.test(val) && !/^CIDADE\s*:?/i.test(val) && !/^ESTADO\s*:?/i.test(val) && !/^(Fone|Fones|Telefone|Tel\.?)\b/i.test(val));
+      if (bairroMatches.length) bairro = bairroMatches[bairroMatches.length - 1];
+      if (/^(CEP|CIDADE|ESTADO)\s*:?/i.test(bairro)) bairro = '';
 
+      // --------- CEP ---------
       const cepMatchGlobal = [...text.matchAll(/CEP\s*:\s*([\d\-\.]+)/gi)];
-      if (cepMatchGlobal.length) cep = cepMatchGlobal[cepMatchGlobal.length - 1][1];
+      if (cepMatchGlobal.length) cep = (cepMatchGlobal[cepMatchGlobal.length - 1][1] || '').replace(/\D/g,'').padStart(8,'0');
 
-      // --------- Cidade / UF ---------
-      if (!city || !state) {
-        let sub = text;
-        const clientPos = text.toLowerCase().indexOf('cliente');
-        if (clientPos !== -1) sub = text.substring(clientPos);
-        const m = sub.match(/([^\-\n]+)\s*-\s*[^\-\n]+\s*-\s*([A-Z]{2})/i);
-        if (m) { city = m[1].trim(); state = m[2].trim(); }
+      // --------- Cidade / UF (AJUSTADO) ---------
+      // 1) Prioriza as linhas logo após "Cliente:"
+      const clientLineIdx = lines.findIndex(l => /^Cliente\s*:/i.test(l));
+      let foundCS = false;
+      if (clientLineIdx !== -1) {
+        const windowText = lines.slice(clientLineIdx, Math.min(clientLineIdx + 12, lines.length)).join(' ');
+        // Padrão típico: "Bairro: <...> PORTO ALEGRE - Rio Grande do Sul - RS CEP: ..."
+        let m = windowText.match(/Bairro\s*:\s*[^\n,]*?\s([A-ZÀ-Ú][A-ZÀ-Ú\s]+?)\s*-\s*[A-Za-zÀ-ú\s]+?\s*-\s*([A-Z]{2})/i);
+        if (!m) {
+          // fallback no mesmo bloco
+          m = windowText.match(/([A-ZÀ-Ú][A-ZÀ-Ú\s]+?)\s*-\s*[A-Za-zÀ-ú\s]+?\s*-\s*([A-Z]{2})/i);
+        }
+        if (m) { city = m[1].trim(); state = m[2].trim(); foundCS = true; }
+      }
+      // 2) Fallback: usa a ÚLTIMA ocorrência de "cliente" no texto inteiro
+      if (!foundCS) {
+        const lastClientPos = text.toLowerCase().lastIndexOf('cliente');
+        const sub = (lastClientPos !== -1) ? text.substring(lastClientPos) : text;
+        const m2 = sub.match(/([A-ZÀ-Ú][A-ZÀ-Ú\s]+?)\s*-\s*[A-Za-zÀ-ú\s]+?\s*-\s*([A-Z]{2})/i);
+        if (m2) { city = m2[1].trim(); state = m2[2].trim(); }
       }
 
       // --------- Veículo ---------
@@ -509,7 +523,7 @@
       pdf.save(pdfFilename);
     }
 
-    // ====== Leitura do contrato (ATUALIZADO: todas as páginas) ======
+    // ====== Leitura do contrato (todas as páginas) ======
     async function extractAllPagesText(pdf) {
       const pages = [];
       for (let p = 1; p <= pdf.numPages; p++) {
@@ -528,7 +542,6 @@
         const typedarray = new Uint8Array(this.result);
         const doc = await pdfjsLib.getDocument(typedarray).promise;
 
-        // >>> ALTERAÇÃO ÚNICA: concatenar o texto de TODAS AS PÁGINAS
         const fullText = await extractAllPagesText(doc);
 
         currentData = extractFields(fullText);
