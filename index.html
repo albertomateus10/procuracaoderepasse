@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Gerador de Procuração</title>
 
-  <!-- Leitura do PDF -->
+  <!-- pdf.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js"></script>
 
@@ -22,7 +22,7 @@
       --card: #fff;
       --text: #222;
       --muted:#666;
-      --signature-offset: 96px; /* mantém a assinatura mais para baixo */
+      --signature-offset: 96px;
     }
     html, body{ margin:0; padding:0; background:var(--bg); color:var(--text); font-family: Arial, Helvetica, sans-serif; }
 
@@ -50,7 +50,7 @@
     button:disabled{ background:#c9c9c9; cursor:not-allowed; }
     button:hover:not(:disabled){ filter: brightness(.92); }
 
-    /* ===== Pré-visualização inline ===== */
+    /* Pré-visualização */
     .preview-section{
       max-width: 1000px; margin: 16px auto 28px; background: var(--card);
       padding: 16px 18px; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.06);
@@ -79,15 +79,13 @@
     .justify{ text-align:justify; }
     .center{ text-align:center; }
 
-    /* Assinatura */
     .signature{ margin-top: var(--signature-offset); }
     .signature .line{ text-align:center; margin:24px 0 6px; }
     .signature .note{ text-align:center; font-weight:bold; }
 
-    /* Espaço extra antes de “CIDADE/ESTADO” (mantido) */
     #p_cityDate, #pp_cityDate { margin-top: 2em; }
 
-    /* Host offscreen (render para html2canvas) */
+    /* Host offscreen para captura do PDF */
     .offscreen{
       position: fixed; left: -10000px; top: -10000px;
       width: var(--a4-w); height: var(--a4-h);
@@ -114,7 +112,7 @@
     </div>
   </div>
 
-  <!-- Pré-visualização inline -->
+  <!-- Pré-visualização -->
   <section class="preview-section" id="previewSection">
     <div class="preview-header">
       <div class="preview-title">Pré-visualização (fiel ao PDF)</div>
@@ -172,12 +170,10 @@
       previewViewport: document.getElementById('previewViewport'),
       previewPage: document.getElementById('previewPage'),
       printPage: document.getElementById('printPage'),
-      // campos da prévia
       p_para1: document.getElementById('p_para1'),
       p_para2: document.getElementById('p_para2'),
       p_vehicleInfo: document.getElementById('p_vehicleInfo'),
       p_cityDate: document.getElementById('p_cityDate'),
-      // campos do print
       pp_para1: document.getElementById('pp_para1'),
       pp_para2: document.getElementById('pp_para2'),
       pp_vehicleInfo: document.getElementById('pp_vehicleInfo'),
@@ -196,10 +192,11 @@
     const isPhoneLine = (l) => /\b(Fone|Fones|Telefone|Tel\.?)\b/i.test(l);
     const isStopLabel = (l) => /\b(Bairro|CEP|Cidade|Estado)\s*:/i.test(l) || isPhoneLine(l) || isDocLabel(l);
 
-    // Heurística de logradouro (mais tolerante para PF)
+    const COMPANY_WORDS = /\b(LTDA|S\/A|S\.A\.|SA|EIRELI|MEI|EPP|ME|EI|S\/A\.|S\.A|S\.\/A\.|HOLDING)\b/i;
+
     const looksLikeStreet = (l) => {
       if (!l) return false;
-      const hasStreetWord = /(RUA|R\.|AVENIDA|AV\.?|ALAMEDA|AL\.|TRAVESSA|TRAV\.|RODOVIA|ROD\.|ESTRADA|ESTR\.|PRAÇA|PRACA|CONDOMÍNIO|COND\.|LOTEAMENTO|LOT\.)/i.test(l);
+      const hasStreetWord = /(RUA|R\.|R\s|AVENIDA|AV\.?|ALAMEDA|AL\.|TRAVESSA|TRAV\.|RODOVIA|ROD\.|ESTRADA|ESTR\.|PRAÇA|PRACA|CONDOM[IÍ]NIO|COND\.|LOTEAMENTO|LOT\.)/i.test(l);
       const hasNumber = /(^|,|\s)\d{1,5}(\s|$|,)/.test(l) || /\bN[º°o]?\b/i.test(l);
       return hasStreetWord || (/[A-ZÁ-Ú]{3,}/i.test(l) && hasNumber);
     };
@@ -209,6 +206,7 @@
       s = s.replace(/(?:C\.?P\.?F\.?|CPF|CNPJ|R\.?G\.?|RG|I\.?E\.?|IE)\s*:\s*[\w\.\-\/]+/gi, '');
       s = s.split(/,(?=\s*(Bairro|CEP|Cidade|Estado)\s*:)/i)[0];
       s = s.split(/\b(Bairro|CEP|Cidade|Estado)\s*:/i)[0];
+      s = s.replace(COMPANY_WORDS, ''); // remove sufixos de empresa
       return s.replace(/\s{2,}/g,' ').replace(/^[,\.;\-\s]+|[,\.;\-\s]+$/g,'').trim();
     }
 
@@ -228,14 +226,110 @@
       return out.trim();
     }
 
-    // ====== Extração de dados do PDF ======
+    // ===== NOVO: endereço após CPF/CNPJ usando o “R ” da mesma linha =====
+    function extractAddressAfterDocR(fullText){
+      // Une por linhas e procura uma linha que tenha CPF/CNPJ e “R ” depois
+      const lines = fullText.split(/\n+/).map(l => l.trim()).filter(Boolean);
+
+      // padrão: ... CNPJ: 51.333.593/0001-49R JOSE DO PATROCINIO, 333
+      const docR = /(CPF|C\.?P\.?F\.?|CNPJ)\s*:\s*[\d\.\-\/]{11,18}.*?\bR\.?\s+([^\n]+)/i;
+
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        const m = l.match(docR);
+        if (m) {
+          // pega o que vem após “R ” até o fim da linha
+          let addr = cleanAddress(m[2] || '');
+
+          // se a próxima linha continuar com complemento e NÃO for um rótulo, agrega
+          if (i + 1 < lines.length && !isStopLabel(lines[i+1])) {
+            const n1 = cleanAddress(lines[i+1]);
+            if (n1 && (/,\s*\d+/.test(n1) || looksLikeStreet(n1))) {
+              addr = (addr + ' ' + n1).trim();
+            }
+          }
+
+          // valida visualmente como endereço
+          if (looksLikeStreet(addr)) return addr;
+          // mesmo que não tenha “Rua/Av”, se tiver número já é suficiente para este layout
+          if (/\d{1,5}/.test(addr)) return addr;
+        }
+      }
+      // fallback: busca no texto inteiro (casos raros de quebras)
+      const g = fullText.replace(/\n+/g,' ').match(docR);
+      if (g) {
+        let addr = cleanAddress(g[2] || '');
+        if (looksLikeStreet(addr) || /\d{1,5}/.test(addr)) return addr;
+      }
+      return '';
+    }
+
+    function extractCityUfFrom(text){
+      // “CIDADE - Estado por extenso - UF”
+      const m = text.match(/([A-ZÀ-Ú][A-ZÀ-Ú\s]+?)\s*-\s*[A-Za-zÀ-ú\s]+?\s*-\s*([A-Z]{2})/i);
+      if (m) {
+        return { city: m[1].trim().replace(/\s+/g,' '), state: m[2].trim() };
+      }
+      return { city:'', state:'' };
+    }
+
+    function cleanBairroAgainstCity(bairro, city){
+      if (!bairro) return '';
+      let b = bairro.replace(/\s*-\s*[A-Za-zÀ-ú\s]+?\s*-\s*[A-Z]{2}\s*$/, ''); // remove " - Rio Grande do Sul - RS"
+      if (city) {
+        const patternEq = new RegExp('^\\s*' + city.replace(/\s+/g,'\\s+') + '\\s*$', 'i');
+        if (patternEq.test(b)) b = ''; // se o bairro for igual à cidade → descarta
+        const tail = new RegExp('\\s+' + city.replace(/\s+/g,'\\s+') + '\\s*$', 'i');
+        b = b.replace(tail, '');
+      }
+      return b.replace(/\s{2,}/g,' ').trim();
+    }
+
+    // limpa cidade quando vier com o bairro na frente (ex.: “JARDIM DO SALSO PORTO ALEGRE”)
+    function refineCity(rawCity, bairro){
+      if (!rawCity) return '';
+      let c = rawCity.replace(/\s{2,}/g,' ').trim();
+
+      if (bairro) {
+        const bx = bairro.replace(/\s+/g,'\\s+');
+        const rx = new RegExp('^' + bx + '[,\\s\\-]+', 'i');
+        c = c.replace(rx, '').trim();
+      }
+
+      c = c.replace(/^\-+\s*/,'').replace(/\-+\s*$/,'').trim();
+
+      const parts = c.split(/\s+/).filter(Boolean);
+      if (parts.length >= 3){
+        const last2 = parts.slice(-2).join(' ');
+        const last3 = parts.slice(-3).join(' ');
+        if (parts[parts.length-1].length>=2 && parts[parts.length-2].length>=2){
+          c = last2;
+        } else {
+          c = last3;
+        }
+      }
+      return c.trim();
+    }
+
+    function extractNameFallback(text){
+      const m = text.match(/(?:^|\n)([^,\n]{3,}?),\s*(?:CPF\/CNPJ|CPF|CNPJ)\s*:/i);
+      if (m) {
+        let nm = (m[1] || '').trim();
+        if (!/PROCURA[ÇC]ÃO|CONTRATO|CLIENTE\s*:|ENDEREÇO\s*:|RAZ[ÃA]O/i.test(nm)) {
+          return nm.replace(/\s{2,}/g,' ');
+        }
+      }
+      return '';
+    }
+
+    // ====== Extração principal ======
     function extractFields(text) {
       const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
 
       let name='', address='', bairro='', cep='', city='', state='', cnpj='',
           model='', plate='', ano='', chassis='', renavam='', color='';
 
-      // --------- CPF/CNPJ ----------
+      // DOC
       const findLabeledCNPJ = () => {
         for (const l of lines) {
           if (isPhoneLine(l)) continue;
@@ -248,7 +342,7 @@
         for (const l of lines) {
           if (isPhoneLine(l)) continue;
           const m = l.match(/(?:C\.?P\.?F\.?|CPF)\s*:?\s*([\d\.\-]{11,14})/i);
-          if (m && isCPF(m[1])) return m[1];
+        if (m && isCPF(m[1])) return m[1];
         }
         return null;
       };
@@ -282,96 +376,93 @@
         if (d.length === 14 || d.length === 11) cnpj = doc;
       }
 
-      // --------- Nome ---------
+      // NOME
       const nameMatch = text.match(/Cliente\s*:\s*([^\n,]+)/i);
       if (nameMatch) {
         let nm = nameMatch[1];
         nm = nm.split(/CPF|C\.?P\.?F|CNPJ|Cadastro/i)[0];
         name = nm.trim();
       }
+      if (!name) name = extractNameFallback(text);
 
-      // --------- ENDEREÇO ---------
-      const enderecoLabelIdx = lines.findIndex(l => /Endere[cç]o\s*:/i.test(l));
-      if (enderecoLabelIdx !== -1) {
-        let candidate = cleanAddress(lines[enderecoLabelIdx].replace(/^.*Endere[cç]o\s*:\s*/i, ''));
-        if (!candidate || candidate.length < 6) {
-          for (let k = 1; k <= 2 && enderecoLabelIdx + k < lines.length; k++) {
-            const nxt = lines[enderecoLabelIdx + k];
-            if (!nxt || isStopLabel(nxt)) break;
-            const cleaned = cleanAddress(nxt);
-            if (cleaned && (looksLikeStreet(cleaned) || candidate === '')) {
-              candidate = candidate ? (candidate + ' ' + cleaned) : cleaned;
+      // ENDEREÇO — regra prioritária: logo após CPF/CNPJ usando “R ”
+      address = extractAddressAfterDocR(text);
+
+      // Se por algum motivo essa linha não aparecer, caímos nos fallbacks:
+      if (!address) {
+        // 1) “Endereço:”
+        const enderecoLabelIdx = lines.findIndex(l => /Endere[cç]o\s*:/i.test(l));
+        if (enderecoLabelIdx !== -1) {
+          let candidate = lines[enderecoLabelIdx].replace(/^.*Endere[cç]o\s*:\s*/i, '').trim();
+          candidate = cleanAddress(candidate);
+
+          const equalsName = candidate && name && candidate.replace(/\s+/g,' ').toUpperCase() === name.replace(/\s+/g,' ').toUpperCase();
+          const looksCompany = COMPANY_WORDS.test(candidate);
+
+          if (!candidate || equalsName || looksCompany || !looksLikeStreet(candidate)) {
+            for (let k = 1; k <= 4 && enderecoLabelIdx + k < lines.length; k++){
+              const nxt = cleanAddress(lines[enderecoLabelIdx + k]);
+              if (!nxt || isStopLabel(lines[enderecoLabelIdx + k])) break;
+              if (looksLikeStreet(nxt)) {
+                candidate = collectAddressFrom(lines.map(cleanAddress), enderecoLabelIdx + k);
+                break;
+              }
             }
           }
+          address = (candidate || '').trim();
         }
-        address = (candidate || '').trim();
-      }
-      if (!address) {
-        const clientIdx = lines.findIndex(l => /Cliente\s*:/i.test(l));
-        if (clientIdx !== -1) {
-          for (let j = clientIdx + 1; j < Math.min(clientIdx + 12, lines.length); j++) {
-            const l = lines[j];
-            if (!l) continue;
-            if (isStopLabel(l)) continue;
-            const cleaned = cleanAddress(l);
-            if (looksLikeStreet(cleaned)) {
-              address = collectAddressFrom(lines.map(cleanAddress), j);
-              break;
-            }
-          }
-        }
-      }
-      if (!address) {
-        const cpfLineIdx = lines.findIndex(l => /(?:C\.?P\.?F\.?|CPF)\s*:/i.test(l));
-        if (cpfLineIdx !== -1) {
-          let tail = lines[cpfLineIdx].replace(/.*?(?:C\.?P\.?F\.?|CPF)\s*:\s*[\d\.\-]{11,14}\s*[,;\-–—]?\s*/i, '');
-          tail = cleanAddress(tail);
-          if (looksLikeStreet(tail)) {
-            address = tail;
-            if (cpfLineIdx + 1 < lines.length && !isStopLabel(lines[cpfLineIdx + 1])) {
-              const nextClean = cleanAddress(lines[cpfLineIdx + 1]);
-              if (nextClean && (looksLikeStreet(nextClean) || /,\s*\d+|APT|AP\.?|BL\.?|QD\.?|LT\.?/i.test(nextClean))) {
-                address = (address + ' ' + nextClean).trim();
+
+        // 2) fallback adicional: procurar logradouro após “Cliente:”
+        if (!address) {
+          const clientIdx = lines.findIndex(l => /Cliente\s*:/i.test(l));
+          if (clientIdx !== -1) {
+            for (let j = clientIdx + 1; j < Math.min(clientIdx + 12, lines.length); j++) {
+              const l = lines[j];
+              if (!l) continue;
+              if (isStopLabel(l)) continue;
+              const cleaned = cleanAddress(l);
+              if (looksLikeStreet(cleaned)) {
+                address = collectAddressFrom(lines.map(cleanAddress), j);
+                break;
               }
             }
           }
         }
       }
 
-      // --------- BAIRRO ---------
+      // BAIRRO
       const bairroMatches = [...text.matchAll(/Bairro\s*:\s*([^\n,]+)/gi)]
         .map(m => (m[1] || '').trim())
-        .filter(val => val && !/^CEP\s*:?/i.test(val) && !/^CIDADE\s*:?/i.test(val) && !/^ESTADO\s*:?/i.test(val) && !/^(Fone|Fones|Telefone|Tel\.?)\b/i.test(val));
+        .filter(val =>
+          val &&
+          !/^CEP\s*:?/i.test(val) &&
+          !/^CIDADE\s*:?/i.test(val) &&
+          !/^ESTADO\s*:?/i.test(val) &&
+          !/^(Fone|Fones|Telefone|Tel\.?)\b/i.test(val)
+        );
       if (bairroMatches.length) bairro = bairroMatches[bairroMatches.length - 1];
-      if (/^(CEP|CIDADE|ESTADO)\s*:?/i.test(bairro)) bairro = '';
 
-      // --------- CEP ---------
+      // CEP
       const cepMatchGlobal = [...text.matchAll(/CEP\s*:\s*([\d\-\.]+)/gi)];
       if (cepMatchGlobal.length) cep = (cepMatchGlobal[cepMatchGlobal.length - 1][1] || '').replace(/\D/g,'').padStart(8,'0');
 
-      // --------- Cidade / UF (AJUSTADO) ---------
-      // 1) Prioriza as linhas logo após "Cliente:"
-      const clientLineIdx = lines.findIndex(l => /^Cliente\s*:/i.test(l));
-      let foundCS = false;
-      if (clientLineIdx !== -1) {
-        const windowText = lines.slice(clientLineIdx, Math.min(clientLineIdx + 12, lines.length)).join(' ');
-        // Padrão típico: "Bairro: <...> PORTO ALEGRE - Rio Grande do Sul - RS CEP: ..."
-        let m = windowText.match(/Bairro\s*:\s*[^\n,]*?\s([A-ZÀ-Ú][A-ZÀ-Ú\s]+?)\s*-\s*[A-Za-zÀ-ú\s]+?\s*-\s*([A-Z]{2})/i);
-        if (!m) {
-          // fallback no mesmo bloco
-          m = windowText.match(/([A-ZÀ-Ú][A-ZÀ-Ú\s]+?)\s*-\s*[A-Za-zÀ-ú\s]+?\s*-\s*([A-Z]{2})/i);
-        }
-        if (m) { city = m[1].trim(); state = m[2].trim(); foundCS = true; }
+      // CIDADE/UF (mantidas regras robustas)
+      let loc = extractCityUfFrom(text);
+      city = loc.city; state = loc.state;
+
+      if (!city) {
+        const cityLbl = text.match(/Cidade\s*:\s*([^\n,]+)/i);
+        if (cityLbl) city = (cityLbl[1] || '').trim();
       }
-      // 2) Fallback: usa a ÚLTIMA ocorrência de "cliente" no texto inteiro
-      if (!foundCS) {
-        const lastClientPos = text.toLowerCase().lastIndexOf('cliente');
-        const sub = (lastClientPos !== -1) ? text.substring(lastClientPos) : text;
-        const m2 = sub.match(/([A-ZÀ-Ú][A-ZÀ-Ú\s]+?)\s*-\s*[A-Za-zÀ-ú\s]+?\s*-\s*([A-Z]{2})/i);
-        if (m2) { city = m2[1].trim(); state = m2[2].trim(); }
+      if (!state) {
+        const ufLbl = text.match(/Estado\s*:\s*([A-Z]{2})/i);
+        if (ufLbl) state = (ufLbl[1] || '').trim();
       }
 
-      // --------- Veículo ---------
+      if (city) city = refineCity(city, bairro);
+      if (bairro) bairro = cleanBairroAgainstCity(bairro, city);
+
+      // VEÍCULO (inalterado)
       const modelMatch = text.match(/Ve[ií]culo\s*:\s*([^\n]+?)(?=\s+Placa|\s+Chassi|\n)/i);
       if (modelMatch) model = modelMatch[1].trim();
 
@@ -433,7 +524,7 @@
       return { name, cnpj, address, bairro, cep, city, state, model, plate, ano, chassis, renavam, color };
     }
 
-    // ====== Preenche nós (prévia e impressão) ======
+    // ====== Preenche nós ======
     function fillPreview(data){
       els.p_para1.innerHTML =
         `Por este instrumento particular de procuração, <b>${data.name || ''}</b>, CPF/CNPJ: <b>${data.cnpj || ''}</b>, ` +
@@ -482,7 +573,7 @@
         'CIDADE: ________________, ESTADO: ___, ____ de _______________ de ____.';
     }
 
-    // ====== Autoscale p/ A4 ======
+    // ====== Layout/Export ======
     function autoscaleToA4(node){
       node.style.transform = 'scale(1)';
       const contentH = node.scrollHeight;
@@ -502,7 +593,6 @@
       vp.style.height = (A4_H * scale) + 'px';
     }
 
-    // ====== PDF (1ª página, sem páginas extras) ======
     async function generatePDF(){
       if (!currentData) return;
 
@@ -523,7 +613,6 @@
       pdf.save(pdfFilename);
     }
 
-    // ====== Leitura do contrato (todas as páginas) ======
     async function extractAllPagesText(pdf) {
       const pages = [];
       for (let p = 1; p <= pdf.numPages; p++) {
@@ -565,7 +654,7 @@
       reader.readAsArrayBuffer(file);
     }
 
-    // ====== Eventos ======
+    // Eventos
     const da = document.getElementById('dropArea');
     const fi = document.getElementById('fileInput');
     fi.addEventListener('change', (e)=>{ const f = e.target.files[0]; handlePDFFile(f); });
