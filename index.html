@@ -215,7 +215,6 @@
       const endIdx = after.search(/Bairro\s*:/i);
       let segment = endIdx >= 0 ? after.slice(0, endIdx) : after;
 
-      // compacta e remove rótulos residuais, se houver
       segment = segment.replace(/\s+/g,' ').trim();
       const cutAt = segment.search(/\b(CEP|Cidade|Estado|Fones?|Telefone|Tel\.?|E-?mail|Email|E-Mail|Cliente|Cadastro)\b/i);
       if (cutAt >= 0) segment = segment.slice(0, cutAt).trim();
@@ -253,28 +252,19 @@
       return '';
     }
 
-    /* ===== CIDADE/UF com “ESPAÇO SIGNIFICATIVO” entre colunas =====
-       - Lê a linha do "Bairro:".
-       - Se houver blocos separados por >=3 espaços/tab, assume segunda coluna como "Cidade - Estado extenso - UF".
-       - Se a cidade vier na próxima linha, também captura.
-    */
+    /* ===== CIDADE/UF com “ESPAÇO SIGNIFICATIVO” (colunas) ===== */
     function extractCityStateFromBairroBlock(fullText){
       const rawLines = fullText.replace(/\t/g, '    ').split(/\n+/);
       for (let i = 0; i < rawLines.length; i++){
         const line = rawLines[i].trim();
         if (!/Bairro\s*:/i.test(line)) continue;
 
-        // 1) Bairro (primeiro bloco)
         const afterLabel = line.replace(/.*Bairro\s*:\s*/i, '');
-        // divide por blocos de muitos espaços (colunas)
         const chunks = line.split(/\s{3,}/).map(s => s.trim()).filter(Boolean);
 
-        // bairro pode estar no primeiro chunk (após o rótulo)
         let bairro = afterLabel.split(/\s{3,}/)[0].trim();
 
-        // 2) Cidade/UF na MESMA linha (outro bloco da mesma linha)
         let city = '', state = '';
-        // procura em qualquer chunk um padrão "Cidade - ... - UF"
         for (const ch of chunks){
           const m = ch.match(/([A-ZÀ-Ú][A-ZÀ-Ú\s]+?)\s*-\s*[A-Za-zÀ-ú\s]+?\s*-\s*([A-Z]{2})\b/i);
           if (m){
@@ -284,7 +274,6 @@
           }
         }
 
-        // 3) Se não achou na mesma linha, tenta nas PRÓXIMAS 2 LINHAS
         if (!city && i+1 < rawLines.length){
           for (let k = 1; k <= 2 && i+k < rawLines.length; k++){
             const nxt = rawLines[i+k].trim();
@@ -297,7 +286,6 @@
           }
         }
 
-        // Limpeza de bairro (retira sufixos de estado/uf se vierem colados)
         bairro = bairro.replace(/\s*-\s*[A-Za-zÀ-ú\s]+?\s*-\s*[A-Z]{2}\s*$/,'').trim();
 
         if (bairro || (city && state)){
@@ -326,24 +314,23 @@
       return b.replace(/\s{2,}/g,' ').trim();
     }
 
-    // remove bairro à esquerda quando gruda na cidade
+    /* ===== CORREÇÃO AQUI: manter o nome COMPLETO da cidade ===== */
     function refineCity(rawCity, bairro){
       if (!rawCity) return '';
       let c = rawCity.replace(/\s{2,}/g,' ').trim();
+
+      // Se vier “Bairro + Cidade” colados, remove o bairro do início
       if (bairro){
         const bx = bairro.replace(/\s+/g,'\\s+');
-        const rx = new RegExp('^' + bx + '[,\\s\\-]+','i');
-        c = c.replace(rx,'').trim();
+        const rx = new RegExp('^' + bx + '[,\\s\\-]+', 'i');
+        c = c.replace(rx, '').trim();
       }
-      c = c.replace(/^\-+\s*/,'').replace(/\-+\s*$/,'').trim();
-      const parts = c.split(/\s+/).filter(Boolean);
-      if (parts.length >= 3){
-        const last2 = parts.slice(-2).join(' ');
-        const last3 = parts.slice(-3).join(' ');
-        if (parts[parts.length-1].length>=2 && parts[parts.length-2].length>=2) c = last2;
-        else c = last3;
-      }
-      return c.trim();
+
+      // Limpa bordas/hífens residuais
+      c = c.replace(/^\s*[-,]+\s*/,'').replace(/\s*[-,]+\s*$/,'').trim();
+
+      // >>> Não cortar mais para “últimas 2–3 palavras”! <<<
+      return c;
     }
 
     function extractNameFallback(text){
@@ -423,14 +410,13 @@
       // ENDEREÇO — PRIORITÁRIO
       address = extractAddressBetweenDocAndBairro(text) || extractAddressAfterDocR(text);
 
-      // BAIRRO / CIDADE / UF — usando coluna (espaço significativo)
+      // BAIRRO / CIDADE / UF — coluna com espaço significativo
       const bx = extractCityStateFromBairroBlock(text);
       if (bx){
         bairro = bx.bairro;
         city   = bx.city;
         state  = bx.state;
       } else {
-        // fallback: rótulos/forma global
         const bairroLbl = text.match(/Bairro\s*:\s*([^\n,]+)/i);
         if (bairroLbl) bairro = (bairroLbl[1] || '').trim();
         const loc = extractCityUfGlobal(text);
@@ -440,8 +426,8 @@
       }
 
       // Limpezas cruzadas
-      if (city)  city  = refineCity(city, bairro);
-      if (bairro)bairro = cleanBairroAgainstCity(bairro, city);
+      if (city)   city   = refineCity(city, bairro);
+      if (bairro) bairro = cleanBairroAgainstCity(bairro, city);
 
       // CEP
       const cepMatchGlobal = [...text.matchAll(/CEP\s*:\s*([\d\-\.]+)/gi)];
